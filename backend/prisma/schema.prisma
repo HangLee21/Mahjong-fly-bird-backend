@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  openid    String   @unique
+  unionid   String?
+  nickname  String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seats RoomSeat[]
+  games GamePlayer[]
+}
+
+model Room {
+  id          String   @id @default(cuid())
+  roomCode    String   @unique
+  status      String
+  ownerId     String
+  ruleVersion String
+  configJson  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  seats RoomSeat[]
+  games Game[]
+}
+
+model RoomSeat {
+  id        String  @id @default(cuid())
+  roomId    String
+  seatIndex Int
+  userId    String?
+  isAI      Boolean @default(false)
+  aiLevel   String?
+  aiModel   String?
+  status    String
+
+  room Room  @relation(fields: [roomId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, seatIndex])
+}
+
+model Game {
+  id             String    @id @default(cuid())
+  roomId         String
+  status         String
+  ruleVersion    String
+  observationVer String
+  actionVersion  String
+  seed           String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  finalScoreJson Json?
+  resultJson     Json?
+
+  room    Room         @relation(fields: [roomId], references: [id])
+  players GamePlayer[]
+  steps   GameStep[]
+}
+
+model GamePlayer {
+  id           String  @id @default(cuid())
+  gameId       String
+  userId       String?
+  seatIndex    Int
+  isAI         Boolean @default(false)
+  aiModel      String?
+  initialScore Int     @default(0)
+  finalScore   Int?
+
+  game Game  @relation(fields: [gameId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+
+  @@unique([gameId, seatIndex])
+}
+
+model GameStep {
+  id               String   @id @default(cuid())
+  gameId           String
+  stepIndex        Int
+  playerIndex      Int
+  actionJson       Json
+  legalActionsJson Json
+  publicViewJson   Json
+  privateViewJson  Json?
+  stateHashBefore  String
+  stateHashAfter   String
+  rewardJson       Json?
+  aiModel          String?
+  actionSource     String
+  createdAt        DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id])
+
+  @@unique([gameId, stepIndex])
+}
+
+model ModelVersion {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  status         String
+  endpoint       String
+  ruleVersion    String
+  observationVer String
+  actionVersion  String
+  metadataJson   Json
+  createdAt      DateTime @default(now())
+}

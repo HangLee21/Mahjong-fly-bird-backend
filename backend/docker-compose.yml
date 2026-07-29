@@ -2,20 +2,32 @@ services:
   postgres:
     image: postgres:16
     container_name: mahjong_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: mahjong
     ports:
-      - "5432:5432"
+      - "127.0.0.1:15432:5432"
     volumes:
       - mahjong_pg_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
     container_name: mahjong_redis
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--bind",
+        "0.0.0.0",
+        "--protected-mode",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:-mahjong_redis_local_password}"
+      ]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
 volumes:
   mahjong_pg_data:

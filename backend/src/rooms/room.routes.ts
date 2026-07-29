@@ -2,42 +2,68 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/auth.routes.js';
 import { gameService } from '../game/game.service.js';
+import { defaultRoomRules, presentRoom, presentRoomPreview } from './room.presenter.js';
 import { RoomService } from './room.service.js';
 
 const AddAiBody = z.object({
+  seatIndex: z.coerce.number().int().min(0).max(3).optional(),
+  model: z.string().optional(),
   aiLevel: z.string().optional(),
   aiModel: z.string().optional()
 });
+
+const JoinRoomBody = z
+  .object({
+    seatIndex: z.number().int().min(0).max(3).optional()
+  })
+  .optional();
+
+const CreateRoomBody = z
+  .object({
+    roomId: z.string().regex(/^\d{6}$/).optional(),
+    rules: z.record(z.unknown()).optional()
+  })
+  .optional();
 
 export async function registerRoomRoutes(app: FastifyInstance) {
   const rooms = new RoomService();
 
   app.post('/api/rooms', async (request) => {
     const auth = await requireAuth(request);
-    return rooms.createRoom(auth.userId);
+    const body = CreateRoomBody.parse(request.body ?? {});
+    const room = await rooms.createRoom(auth.userId, { ...defaultRoomRules, ...(body?.rules ?? {}) }, body?.roomId);
+    return { room: presentRoom(room) };
   });
 
   app.get('/api/rooms/:roomId', async (request) => {
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
-    return rooms.getRoom(roomId);
+    return presentRoom(await rooms.getRoom(roomId));
+  });
+
+  app.get('/api/rooms/:roomId/preview', async (request) => {
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    return presentRoomPreview(await rooms.previewRoom(roomId), roomId);
   });
 
   app.post('/api/rooms/:roomId/join', async (request) => {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
-    return rooms.joinRoom(roomId, auth.userId);
+    const body = JoinRoomBody.parse(request.body ?? {});
+    return presentRoom(await rooms.joinRoom(roomId, auth.userId, body?.seatIndex));
   });
 
   app.post('/api/rooms/:roomId/leave', async (request) => {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
-    return rooms.leaveRoom(roomId, auth.userId);
+    const result = await rooms.leaveRoom(roomId, auth.userId);
+    return 'deleted' in result ? result : presentRoom(result);
   });
 
   app.post('/api/rooms/:roomId/add-ai', async (request) => {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
-    return rooms.addAi(roomId, auth.userId, AddAiBody.parse(request.body ?? {}));
+    const body = AddAiBody.parse(request.body ?? {});
+    return presentRoom(await rooms.addAi(roomId, auth.userId, { ...body, aiModel: body.aiModel ?? body.model }));
   });
 
   app.post('/api/rooms/:roomId/start', async (request) => {

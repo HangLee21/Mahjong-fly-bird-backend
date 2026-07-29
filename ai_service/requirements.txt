@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+PyYAML==6.0.3
+numpy==1.26.4
+stable-baselines3==2.4.0
+sb3-contrib==2.4.0
+torch>=2.2.0

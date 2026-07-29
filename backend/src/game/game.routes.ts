@@ -16,4 +16,17 @@ export async function registerGameRoutes(app: FastifyInstance) {
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
     return gameService.submitAction(roomId, auth.userId, ClientActionSchema.parse(request.body));
   });
+
+  app.get('/api/games/:gameId/view', async (request) => {
+    const auth = await requireAuth(request);
+    const { gameId } = z.object({ gameId: z.string() }).parse(request.params);
+    return gameService.getGameViewByGameId(gameId, auth.userId);
+  });
+
+  app.post('/api/games/:gameId/actions', async (request) => {
+    const auth = await requireAuth(request);
+    const { gameId } = z.object({ gameId: z.string() }).parse(request.params);
+    const view = await gameService.submitActionByGameId(gameId, auth.userId, ClientActionSchema.parse(request.body));
+    return { accepted: true, view };
+  });
 }

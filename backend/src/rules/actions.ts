@@ -10,7 +10,8 @@ export type ActionType =
   | 'CHOW_RIGHT'
   | 'KONG_EXPOSED'
   | 'KONG_CONCEALED'
-  | 'KONG_ADDED';
+  | 'KONG_ADDED'
+  | 'SELECT_KONG_TILE';
 
 export interface GameAction {
   type: ActionType;
@@ -19,21 +20,28 @@ export interface GameAction {
   extra?: Record<string, unknown>;
 }
 
+const ActionTypeSchema = z.enum([
+  'DISCARD',
+  'PASS',
+  'WIN',
+  'PONG',
+  'CHOW_LEFT',
+  'CHOW_MIDDLE',
+  'CHOW_RIGHT',
+  'KONG_EXPOSED',
+  'KONG_CONCEALED',
+  'KONG_ADDED',
+  'SELECT_KONG_TILE'
+]);
+
 export const ClientActionSchema = z.object({
-  type: z.enum([
-    'DISCARD',
-    'PASS',
-    'WIN',
-    'PONG',
-    'CHOW_LEFT',
-    'CHOW_MIDDLE',
-    'CHOW_RIGHT',
-    'KONG_EXPOSED',
-    'KONG_CONCEALED',
-    'KONG_ADDED'
-  ]),
+  type: ActionTypeSchema.optional(),
   tile: z.number().int().min(0).max(33).optional(),
+  actionId: z.number().int().optional(),
+  extra: z.record(z.unknown()).optional(),
   clientSeq: z.number().int().nonnegative().optional()
+}).refine((input) => input.type !== undefined || input.actionId !== undefined, {
+  message: 'Action requires type or actionId.'
 });
 
 export type ClientAction = z.infer<typeof ClientActionSchema>;
@@ -47,7 +55,8 @@ const fixedActionIds: Record<Exclude<ActionType, 'DISCARD'>, number> = {
   CHOW_RIGHT: 105,
   KONG_EXPOSED: 106,
   KONG_CONCEALED: 107,
-  KONG_ADDED: 108
+  KONG_ADDED: 108,
+  SELECT_KONG_TILE: 109
 };
 
 export function encodeAction(action: Pick<GameAction, 'type' | 'tile'>): number {
@@ -66,6 +75,12 @@ export function decodeAction(actionId: number): GameAction {
 }
 
 export function normalizeClientAction(input: ClientAction): GameAction {
+  if (!input.type && input.actionId !== undefined) return decodeAction(input.actionId);
+  if (!input.type) throw new Error('Action requires type or actionId.');
+  if (input.type === 'DISCARD' && input.tile === undefined && input.actionId !== undefined) {
+    const decoded = decodeAction(input.actionId);
+    if (decoded.type === 'DISCARD') return decoded;
+  }
   const action = { type: input.type, tile: input.tile } as Pick<GameAction, 'type' | 'tile'>;
   return { ...action, actionId: encodeAction(action) };
 }

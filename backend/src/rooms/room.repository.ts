@@ -4,10 +4,10 @@ import { env } from '../config/env.js';
 import { prisma } from '../storage/prisma.js';
 
 export class RoomRepository {
-  async create(ownerId: string, configJson: Record<string, unknown>) {
+  async create(ownerId: string, configJson: Record<string, unknown>, roomCode = createRoomCode()) {
     return prisma.room.create({
       data: {
-        roomCode: createRoomCode(),
+        roomCode,
         status: 'WAITING',
         ownerId,
         ruleVersion: env.DEFAULT_RULE_VERSION,
@@ -21,17 +21,38 @@ export class RoomRepository {
           ]
         }
       },
-      include: { seats: { orderBy: { seatIndex: 'asc' } } }
+      include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
     });
   }
 
   findById(roomId: string) {
-    return prisma.room.findUnique({ where: { id: roomId }, include: { seats: { orderBy: { seatIndex: 'asc' } } } });
+    return prisma.room.findUnique({
+      where: { id: roomId },
+      include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+    });
   }
 
-  async join(roomId: string, userId: string) {
+  findByIdOrCode(roomId: string) {
+    return prisma.room.findFirst({
+      where: { OR: [{ id: roomId }, { roomCode: roomId }] },
+      include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+    });
+  }
+
+  findMany(input: { status?: string; updatedBefore?: Date }) {
+    return prisma.room.findMany({
+      where: {
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.updatedBefore ? { updatedAt: { lte: input.updatedBefore } } : {})
+      },
+      orderBy: { updatedAt: 'asc' },
+      include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+    });
+  }
+
+  async join(roomId: string, userId: string, seatIndex?: number) {
     const room = await this.findById(roomId);
-    const seat = room?.seats.find((item) => item.status === 'EMPTY');
+    const seat = room?.seats.find((item) => item.status === 'EMPTY' && (seatIndex === undefined || item.seatIndex === seatIndex));
     if (!seat) return null;
     await prisma.roomSeat.update({
       where: { id: seat.id },
@@ -51,9 +72,76 @@ export class RoomRepository {
     return this.findById(roomId);
   }
 
-  async addAi(roomId: string, aiLevel = 'normal', aiModel = 'heuristic_mock') {
+  async leaveAndDestroyIfEmpty(roomId: string, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      const room = await tx.room.findUnique({
+        where: { id: roomId },
+        include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+      });
+      if (!room) return { kind: 'not_found' } as const;
+
+      const seat = room.seats.find((item) => item.userId === userId && !item.isAI);
+      if (!seat) return { kind: 'not_joined' } as const;
+
+      await tx.roomSeat.update({
+        where: { id: seat.id },
+        data: { userId: null, isAI: false, aiLevel: null, aiModel: null, status: 'EMPTY' }
+      });
+
+      const remainingPlayers = await tx.roomSeat.findMany({
+        where: { roomId, isAI: false, userId: { not: null } },
+        orderBy: { seatIndex: 'asc' },
+        select: { userId: true }
+      });
+
+      if (remainingPlayers.length === 0) {
+        const games = await tx.game.findMany({ where: { roomId }, select: { id: true } });
+        const gameIds = games.map((game) => game.id);
+        await tx.gameStep.deleteMany({ where: { gameId: { in: gameIds } } });
+        await tx.gamePlayer.deleteMany({ where: { gameId: { in: gameIds } } });
+        await tx.game.deleteMany({ where: { roomId } });
+        await tx.roomSeat.deleteMany({ where: { roomId } });
+        await tx.room.delete({ where: { id: roomId } });
+        return {
+          kind: 'deleted',
+          roomId: room.roomCode,
+          internalRoomId: room.id
+        } as const;
+      }
+
+      await tx.room.update({
+        where: { id: roomId },
+        data: {
+          status: room.status,
+          ...(room.ownerId === userId && remainingPlayers[0]?.userId ? { ownerId: remainingPlayers[0].userId } : {})
+        }
+      });
+
+      const updated = await tx.room.findUniqueOrThrow({
+        where: { id: roomId },
+        include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+      });
+      return { kind: 'updated', room: updated } as const;
+    });
+  }
+
+  async deleteRoom(roomId: string) {
+    const games = await prisma.game.findMany({ where: { roomId }, select: { id: true } });
+    const gameIds = games.map((game) => game.id);
+    await prisma.$transaction([
+      prisma.gameStep.deleteMany({ where: { gameId: { in: gameIds } } }),
+      prisma.gamePlayer.deleteMany({ where: { gameId: { in: gameIds } } }),
+      prisma.game.deleteMany({ where: { roomId } }),
+      prisma.roomSeat.deleteMany({ where: { roomId } }),
+      prisma.room.delete({ where: { id: roomId } })
+    ]);
+  }
+
+  async addAi(roomId: string, aiLevel = 'normal', aiModel = 'v3-lite', seatIndex?: number) {
     const room = await this.findById(roomId);
-    const seat = room?.seats.find((item) => item.status === 'EMPTY');
+    const seat =
+      room?.seats.find((item) => item.status === 'EMPTY' && item.seatIndex === seatIndex) ??
+      room?.seats.find((item) => item.status === 'EMPTY');
     if (!seat) return null;
     await prisma.roomSeat.update({
       where: { id: seat.id },

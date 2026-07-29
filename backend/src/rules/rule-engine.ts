@@ -12,6 +12,7 @@ import { shuffleWall } from './tile.js';
 import { applyMockTransition } from './transition.js';
 import type { RuleEngine } from './rule.types.js';
 import { AppError } from '../common/errors.js';
+import { QujingFeiXiaoJiRuleEngine } from './qujing-fei-xiaoji.js';
 
 export class MockRuleEngine implements RuleEngine {
   createInitialState(input: CreateGameInput): GameState {
@@ -32,7 +33,8 @@ export class MockRuleEngine implements RuleEngine {
     for (let round = 0; round < INITIAL_HAND_SIZE; round += 1) {
       for (const player of players) player.hand.push(wall.shift()!);
     }
-    players[0].hand.push(wall.shift()!);
+    const dealer = normalizeDealer(input.dealer);
+    players[dealer].hand.push(wall.shift()!);
 
     const ts = nowMs();
     return {
@@ -43,11 +45,14 @@ export class MockRuleEngine implements RuleEngine {
       status: 'PLAYING',
       players,
       wall,
-      currentPlayer: 0,
-      dealer: 0,
-      roundIndex: 0,
+      currentPlayer: dealer,
+      dealer,
+      roundIndex: Math.max(0, (input.currentRound ?? 1) - 1),
+      currentRound: input.currentRound ?? 1,
+      maxRounds: input.maxRounds ?? 1,
       stepIndex: 0,
       scores: [0, 0, 0, 0],
+      totalScores: input.totalScores ?? [0, 0, 0, 0],
       createdAt: ts,
       updatedAt: ts
     };
@@ -82,4 +87,9 @@ export class MockRuleEngine implements RuleEngine {
   }
 }
 
-export const ruleEngine = new MockRuleEngine();
+function normalizeDealer(dealer: number | undefined) {
+  if (dealer === undefined || !Number.isInteger(dealer) || dealer < 0 || dealer >= DEFAULT_PLAYER_COUNT) return 0;
+  return dealer;
+}
+
+export const ruleEngine = new QujingFeiXiaoJiRuleEngine();

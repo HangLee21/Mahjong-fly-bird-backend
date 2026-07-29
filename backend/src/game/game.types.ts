@@ -22,9 +22,19 @@ export interface PlayerGameView {
   stepIndex: number;
   self: PublicPlayerView & { hand: number[]; legalActions: GameAction[] };
   players: PublicPlayerView[];
+  opponents?: PublicPlayerView[];
+  legalActions?: GameAction[];
   lastDiscard?: { tile: number; fromPlayer: number; stepIndex: number };
   scores: number[];
+  totalScores?: number[];
+  currentRound?: number;
+  maxRounds?: number;
+  isFinalRound?: boolean;
+  publicKongTiles?: number[];
+  xiaoJiActiveAsWild?: boolean;
+  result?: unknown;
   wallCount: number;
+  wallTilesRemaining?: number;
   updatedAt: number;
 }
 
@@ -33,5 +43,9 @@ export interface CreateGameInput {
   gameId: string;
   ruleVersion: string;
   seed: string;
+  currentRound?: number;
+  maxRounds?: number;
+  totalScores?: number[];
+  dealer?: number;
   players: Array<{ seatIndex: number; userId?: string; isAI: boolean; aiModel?: string }>;
 }

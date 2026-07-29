@@ -21,6 +21,17 @@ export interface RuleResult {
 export interface ScoreResult {
   scores: number[];
   reason: string;
+  winnerIndexes?: number[];
+  loserIndexes?: number[];
+  dealer?: number;
+  isSelfDraw?: boolean;
+  isDraw?: boolean;
+  baseScore?: number;
+  cappedFan?: number;
+  fanItems?: Array<{ code: string; name: string; fan: number; points: number; description?: string }>;
+  scoreDelta?: number[];
+  title?: string;
+  description?: string;
 }
 
 export type GameEvent =

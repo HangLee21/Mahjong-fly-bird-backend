@@ -1,0 +1,155 @@
+name: mahjong-fly-bird
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+    logging: *default-logging
+
+  redis:
+    image: redis:7-bookworm
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec redis-server --bind 0.0.0.0 --protected-mode yes --requirepass "$$REDIS_PASSWORD" --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+    logging: *default-logging
+
+  ai:
+    build:
+      context: .
+      dockerfile: ai_service/Dockerfile
+      args:
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    restart: unless-stopped
+    environment:
+      MAHJONG_AI_MODEL: /app/model/v3-lite.zip
+      MAHJONG_AI_CONFIG: /app/model/config/ppo_v3_lite_action_value_bc_finetune.yaml
+      MAHJONG_AI_DEVICE: ${AI_DEVICE:-cpu}
+    volumes:
+      - ./model:/app/model:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=10)"
+      interval: 15s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+    networks:
+      - internal
+    logging: *default-logging
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      WECHAT_APP_ID: ${WECHAT_APP_ID}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET}
+      WECHAT_MOCK_LOGIN: ${WECHAT_MOCK_LOGIN:-false}
+      AI_SERVICE_URL: http://ai:8001
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-5000}
+      MAX_AI_ACTIONS_PER_TICK: ${MAX_AI_ACTIONS_PER_TICK:-20}
+      ROOM_LOCK_TTL_MS: ${ROOM_LOCK_TTL_MS:-30000}
+      ROOM_DISCONNECT_GRACE_MS: ${ROOM_DISCONNECT_GRACE_MS:-60000}
+      DEFAULT_RULE_VERSION: ${DEFAULT_RULE_VERSION:-qujing-fei-xiaoji-v1.5}
+      DEFAULT_OBSERVATION_VERSION: ${DEFAULT_OBSERVATION_VERSION:-obs_v1}
+      DEFAULT_ACTION_VERSION: ${DEFAULT_ACTION_VERSION:-action_v1}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APPLY_DB_SCHEMA: ${APPLY_DB_SCHEMA:-1}
+      SEED_DATABASE: ${SEED_DATABASE:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - internal
+      - web
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      SERVER_DOMAIN: ${SERVER_DOMAIN}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - web
+    logging: *default-logging
+
+networks:
+  internal:
+    internal: true
+  web:
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

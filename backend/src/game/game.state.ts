@@ -9,6 +9,35 @@ export interface GameState {
   players: PlayerState[];
   wall: number[];
   deadWall?: number[];
+  publicKongTiles?: number[];
+  xiaoJiActiveAsWild?: boolean;
+  kongCount?: number;
+  lastDraw?: {
+    playerIndex: number;
+    tile: number;
+    source: 'WALL' | 'PUBLIC_KONG';
+    stepIndex: number;
+  };
+  lastKong?: {
+    playerIndex: number;
+    stepIndex: number;
+    kind: Meld['type'];
+  };
+  pendingKongSelection?: {
+    playerIndex: number;
+    kind: Meld['type'];
+  };
+  afterKongDiscardFrom?: number;
+  specialRuns?: Array<{
+    honorDiscards: number;
+    yaojiuDiscards: number;
+    containsXiaoJiDiscard: boolean;
+    brokenByMeld: boolean;
+  }>;
+  currentRound?: number;
+  maxRounds?: number;
+  totalScores?: number[];
+  result?: unknown;
   currentPlayer: number;
   dealer: number;
   roundIndex: number;
@@ -42,6 +71,7 @@ export interface Meld {
   tiles: number[];
   fromPlayer?: number;
   stepIndex: number;
+  containsXiaoJiAsWild?: boolean;
 }
 
 export interface PendingResponse {

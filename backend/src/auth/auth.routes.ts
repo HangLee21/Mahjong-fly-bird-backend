@@ -40,4 +40,22 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (!user) throw new AppError('UNAUTHORIZED', 'User not found.', 401);
     return { user };
   });
+
+  app.get('/api/auth/session', async (request) => {
+    try {
+      const payload = await requireAuth(request);
+      const user = await users.getUser(payload.userId);
+      if (!user) return { valid: false, user: null };
+      return {
+        valid: true,
+        user: {
+          id: user.id,
+          nickname: user.nickname ?? '游客',
+          avatarUrl: user.avatarUrl ?? ''
+        }
+      };
+    } catch {
+      return { valid: false, user: null };
+    }
+  });
 }

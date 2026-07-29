@@ -37,6 +37,8 @@ describe('MockRuleEngine', () => {
     const engine = new MockRuleEngine();
     const a = engine.createInitialState(input());
     const b = engine.createInitialState(input());
+    b.createdAt = a.createdAt;
+    b.updatedAt = a.updatedAt;
     expect(engine.hashState(a)).toBe(engine.hashState(b));
   });
 

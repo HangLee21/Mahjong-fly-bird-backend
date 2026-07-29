@@ -1,0 +1,118 @@
+seed: 2026
+cuda:
+  allow_tf32: true
+  matmul_precision: high
+  cudnn_benchmark: true
+  empty_cache_on_start: true
+  memory_fraction: 0.95
+  num_threads: 8
+env:
+  controlled_player: 0
+  max_steps_per_game: 300
+  obs_include_action_mask: false
+  obs_include_action_features: true
+  opponent_agent: pool
+  allow_chow: true
+observation:
+  version: obs_v3_lite_action_value
+  include_action_features: true
+action_features:
+  effective_tiles: false
+opponent_pool:
+  per_seat_sample: true
+  members:
+    - kind: heuristic
+      weight: 0.55
+    - kind: win_first
+      weight: 0.20
+    - kind: random
+      weight: 0.25
+reward:
+  score_scale: 6.0
+  step_penalty: 0.001
+  discard_live_xiaoji_penalty: 0.045
+  discard_dead_xiaoji_penalty: 0.0
+  human_discard_preference_bonus: 0.002
+  isolated_honor_discard_bonus: 0.010
+  discard_connected_suit_over_honor_penalty: 0.012
+  discard_pair_over_honor_penalty: 0.010
+  discard_pair_penalty: 0.004
+  discard_only_pair_penalty: 0.008
+  discard_best_shanten_bonus: 0.002
+  discard_miss_best_shanten_penalty: 0.012
+  discard_break_meld_penalty: 0.014
+  discard_break_taatsu_penalty: 0.008
+  discard_break_good_taatsu_penalty: 0.018
+  discard_near_ready_good_taatsu_penalty: 0.028
+  discard_weak_taatsu_bonus: 0.006
+  discard_ready_regression_penalty: 0.040
+  discard_one_shanten_regression_penalty: 0.024
+  discard_shape_score_bonus: 0.0012
+  claim_improvement_bonus: 0.018
+  claim_same_penalty: 0.010
+  claim_regression_penalty: 0.040
+  pass_non_improving_claim_bonus: 0.006
+  pass_same_claim_bonus: 0.004
+  pass_improving_claim_penalty: 0.018
+  discard_over_kong_penalty: 0.002
+  discard_over_kong_ready_penalty: 0.004
+  concealed_kong_bonus: 0.004
+  exposed_kong_penalty: 0.010
+  added_kong_penalty: 0.006
+  added_kong_as_concealed: true
+  added_kong_as_concealed_bonus: 0.004
+  added_kong_ready_bonus: 0.003
+  shanten_improvement_bonus: 0.010
+  shanten_regression_penalty: 0.018
+  ready_bonus: 0.018
+  hand_goal_mode: committed
+  hand_goal_improvement_bonus: 0.0008
+  hand_goal_regression_penalty: 0.0012
+  hand_goal_switch_penalty: 0.004
+  terminal_win_bonus: 0.016
+  self_draw_bonus: 0.014
+  ron_bonus: 0.005
+  fan_bonus: 0.0018
+  point_bonus: 0.007
+model:
+  policy: MlpPolicy
+  device: cuda
+  activation_fn: gelu
+  ortho_init: false
+  feature_extractor:
+    name: layer_norm_mlp
+    hidden_dims: [2048, 1536, 1024]
+    features_dim: 1024
+    dropout: 0.03
+  net_arch:
+    pi: [1024, 512, 256]
+    vf: [1024, 512, 256]
+train:
+  total_timesteps: 30000000
+  num_envs: 6
+  vec_env_type: subproc
+  learning_rate: 0.000003
+  n_steps: 4096
+  batch_size: 8192
+  n_epochs: 1
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip_range: 0.025
+  target_kl: 0.02
+  ent_coef: 0.0
+  vf_coef: 0.7
+  max_grad_norm: 0.2
+logging:
+  checkpoint_dir: artifacts/checkpoints/ppo_v3_lite_action_value_bc_finetune
+  checkpoint_freq: 1000000
+early_stop:
+  enabled: true
+  eval_freq: 1000000
+  num_games: 5000
+  opponent: heuristic
+  metric: avg_score
+  mode: max
+  min_delta: 0.01
+  patience: 10
+  min_timesteps: 10000000
+  seed_offset: 100000

@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Build output
+dist/
+backend/dist/
+coverage/
+backend/coverage/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.server.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Python virtual environments and caches
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Vite and test caches
+.vite/
+backend/.vite/
+.vitest/
+backend/.vitest/
+
+# Logs and runtime dumps
+logs/
+backups/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.seed
+*.pid.lock
+
+# Database and local runtime data
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/
+
+# AI model artifacts
+model/*.zip
+model/*.pt
+model/*.pth
+model/*.onnx
+model/*.pkl
+mahjong_ai.zip
+
+# Keep lightweight model configuration files
+!model/config/
+!model/config/**
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Generated archives
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar

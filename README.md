@@ -111,3 +111,29 @@ npm.cmd run build
 8. 调用 `GET /api/replays/:gameId` 查询牌谱
 
 更多接口说明见 [`backend/docs/api.md`](backend/docs/api.md)，WebSocket 协议见 [`backend/docs/websocket_protocol.md`](backend/docs/websocket_protocol.md)。
+
+
+cd E:\Mahjong-fly-bird-backend
+
+# 关闭 Node 后端 3000
+Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+
+# 关闭 AI 服务 8001
+Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+
+# 关闭 Redis/Postgres 容器
+docker compose -f .\backend\docker-compose.yml down
+
+重新启动
+
+cd E:\Mahjong-fly-bird-backend
+.\start-local-windows.bat
+确认是否启动成功
+
+curl.exe http://localhost:3000/api/health
+docker ps
+正常应该看到：
+
+{"ok":true}

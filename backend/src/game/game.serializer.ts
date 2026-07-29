@@ -20,6 +20,8 @@ export function buildPlayerGameView(
   ruleEngine: Pick<RuleEngine, 'getLegalActions'>
 ): PlayerGameView {
   const player = state.players[playerIndex];
+  const legalActions = ruleEngine.getLegalActions(state, playerIndex);
+  const players = state.players.map(publicPlayerView);
   return {
     gameId: state.gameId,
     roomId: state.roomId,
@@ -32,12 +34,22 @@ export function buildPlayerGameView(
     self: {
       ...publicPlayerView(player),
       hand: [...player.hand],
-      legalActions: ruleEngine.getLegalActions(state, playerIndex)
+      legalActions
     },
-    players: state.players.map(publicPlayerView),
+    players,
+    opponents: players.filter((item) => item.seatIndex !== playerIndex),
+    legalActions,
     lastDiscard: state.lastDiscard,
     scores: [...state.scores],
+    totalScores: [...(state.totalScores ?? state.scores)],
+    currentRound: state.currentRound ?? state.roundIndex + 1,
+    maxRounds: state.maxRounds ?? 1,
+    isFinalRound: (state.currentRound ?? state.roundIndex + 1) >= (state.maxRounds ?? 1),
+    publicKongTiles: [...(state.publicKongTiles ?? [])],
+    xiaoJiActiveAsWild: state.xiaoJiActiveAsWild ?? true,
+    result: state.result ?? null,
     wallCount: state.wall.length,
+    wallTilesRemaining: state.wall.length,
     updatedAt: state.updatedAt
   };
 }

@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { env } from '../config/env.js';
 import type { AiActionRequest, AiActionResult } from './ai.types.js';
+import { buildPredictState } from './predict-state.builder.js';
 
 export interface AiGateway {
   requestAction(input: AiActionRequest): Promise<AiActionResult>;
@@ -13,6 +14,43 @@ export class HttpAiGateway implements AiGateway {
     const timeout = setTimeout(() => controller.abort(), env.AI_REQUEST_TIMEOUT_MS);
 
     try {
+      if (input.state) {
+        const response = await fetch(`${env.AI_SERVICE_URL}/predict`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            player_id: input.playerIndex,
+            deterministic: true,
+            state: buildPredictState(input.state, input.playerIndex)
+          }),
+          signal: controller.signal
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            action?: number;
+            action_type?: string;
+            tile?: number | null;
+            action_text?: string;
+            fallback_used?: boolean;
+            latency_ms?: number;
+          };
+          return {
+            actionId: typeof data.action === 'number' ? data.action : -1,
+            actionType: data.action_type,
+            tile: data.tile ?? undefined,
+            actionText: data.action_text,
+            modelVersion: input.modelVersion,
+            fallbackUsed: data.fallback_used === true,
+            latencyMs: Math.round(data.latency_ms ?? performance.now() - startedAt)
+          };
+        }
+
+        if (response.status !== 404 && response.status !== 405) {
+          throw new Error(`AI predict service returned ${response.status}: ${await response.text()}`);
+        }
+      }
+
       const response = await fetch(`${env.AI_SERVICE_URL}/ai/act`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -30,12 +68,12 @@ export class HttpAiGateway implements AiGateway {
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`AI service returned ${response.status}`);
-      const data = (await response.json()) as { action: number; model_version?: string; confidence?: number };
+      const data = (await response.json()) as { action: number; model_version?: string; confidence?: number; fallback?: boolean };
       return {
         actionId: data.action,
         modelVersion: data.model_version ?? input.modelVersion,
         confidence: data.confidence,
-        fallbackUsed: false,
+        fallbackUsed: data.fallback === true,
         latencyMs: Math.round(performance.now() - startedAt)
       };
     } finally {

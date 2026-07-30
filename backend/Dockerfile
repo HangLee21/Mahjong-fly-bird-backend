@@ -15,10 +15,14 @@ WORKDIR /app
 
 COPY backend/package.json backend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    --mount=type=cache,target=/root/.cache/prisma \
+    CACHE_DIR=/root/.cache \
+    npm ci --prefer-offline --no-audit --no-fund
 
 COPY backend/prisma ./prisma
-RUN npx prisma generate
+RUN --mount=type=cache,target=/root/.cache/prisma \
+    CACHE_DIR=/root/.cache \
+    npx prisma generate
 
 COPY backend/tsconfig.json ./
 COPY backend/src ./src

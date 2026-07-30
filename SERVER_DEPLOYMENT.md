@@ -21,6 +21,20 @@ docker --version
 docker compose version
 ```
 
+如服务器无法访问 Docker Hub，可在 `.env.server` 中覆盖基础镜像来源，而不需要修改
+Dockerfile 或 Compose 文件：
+
+```dotenv
+NODE_BASE_IMAGE=<可访问镜像仓库>/node:20-bookworm-slim
+PYTHON_BASE_IMAGE=<可访问镜像仓库>/python:3.12-slim
+POSTGRES_IMAGE=<可访问镜像仓库>/postgres:16-bookworm
+REDIS_IMAGE=<可访问镜像仓库>/redis:7-bookworm
+CADDY_IMAGE=<可访问镜像仓库>/caddy:2.8-alpine
+```
+
+覆盖前先逐一执行 `docker pull`，验证镜像仓库确实包含对应标签。不要因为镜像加速器返回
+`manifest unknown` 就改动运行时大版本；该错误也可能表示加速器未同步该标签。
+
 将域名（例如 `api.example.com`）的 DNS `A` 记录指向服务器公网 IP，并确保云安全组及系统防火墙允许 `80/443`。Caddy 需要这两个端口来申请证书。
 
 ## 2. 上传项目

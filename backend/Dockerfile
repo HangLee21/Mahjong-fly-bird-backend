@@ -1,4 +1,5 @@
-FROM node:20-bookworm-slim AS build
+ARG NODE_BASE_IMAGE=node:20-bookworm-slim
+FROM ${NODE_BASE_IMAGE} AS build
 
 WORKDIR /app
 
@@ -14,7 +15,7 @@ COPY backend/scripts ./scripts
 RUN npm run build \
     && npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runtime
+FROM ${NODE_BASE_IMAGE} AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app

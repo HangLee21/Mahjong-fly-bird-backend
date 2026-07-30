@@ -35,6 +35,17 @@ CADDY_IMAGE=<可访问镜像仓库>/caddy:2.8-alpine
 覆盖前先逐一执行 `docker pull`，验证镜像仓库确实包含对应标签。不要因为镜像加速器返回
 `manifest unknown` 就改动运行时大版本；该错误也可能表示加速器未同步该标签。
 
+中国内地服务器还可以在 `.env.server` 中覆盖 Python 包下载地址。AI 镜像使用与模型
+训练环境一致的 PyTorch `2.12.0` CPU wheel，并将普通依赖和 PyTorch wheel 分开配置：
+
+```dotenv
+PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+PYTORCH_WHEEL_URL=https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.12.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl
+```
+
+AI Dockerfile 使用 BuildKit pip 缓存；首次下载仍需等待，但网络中断后重新构建可复用
+已经下载完成的包。
+
 将域名（例如 `api.example.com`）的 DNS `A` 记录指向服务器公网 IP，并确保云安全组及系统防火墙允许 `80/443`。Caddy 需要这两个端口来申请证书。
 
 ## 2. 上传项目

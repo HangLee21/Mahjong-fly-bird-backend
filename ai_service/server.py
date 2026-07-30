@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import sys
 import threading
 import time
+import zipfile
 from dataclasses import fields
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -101,9 +103,21 @@ class AIRuntime:
                 f"model not found: {model_path}. Copy your trained model to this path or set MAHJONG_AI_MODEL."
             )
         install_numpy_pickle_aliases()
+        import torch
         from sb3_contrib import MaskablePPO
 
-        return MaskablePPO.load(str(model_path), device=device)
+        original_torch_load = torch.load
+
+        def load_zip_entry(file: Any, *args: Any, **kwargs: Any):
+            if isinstance(file, zipfile.ZipExtFile):
+                file = io.BytesIO(file.read())
+            return original_torch_load(file, *args, **kwargs)
+
+        torch.load = load_zip_entry
+        try:
+            return MaskablePPO.load(str(model_path), device=device)
+        finally:
+            torch.load = original_torch_load
 
     def predict(
         self,

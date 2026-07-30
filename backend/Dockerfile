@@ -1,5 +1,12 @@
 ARG NODE_BASE_IMAGE=node:20-bookworm-slim
-FROM ${NODE_BASE_IMAGE} AS build
+FROM ${NODE_BASE_IMAGE} AS base
+
+# Prisma detects the OpenSSL ABI at runtime before loading its native engines.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS build
 
 WORKDIR /app
 
@@ -15,7 +22,7 @@ COPY backend/scripts ./scripts
 RUN npm run build \
     && npm prune --omit=dev
 
-FROM ${NODE_BASE_IMAGE} AS runtime
+FROM base AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app

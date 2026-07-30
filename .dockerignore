@@ -8,6 +8,9 @@
 **/dist
 **/coverage
 **/.env
+**/.env.*
+**/.env.server
+game-assets/remote/
 logs
 .vite
 .vitest

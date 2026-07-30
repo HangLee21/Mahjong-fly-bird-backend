@@ -62,6 +62,19 @@ nano .env.server
 
 至少修改 `SERVER_DOMAIN`、数据库/Redis 密码、`JWT_SECRET`、`ADMIN_TOKEN`、`WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`。密码使用足够长的随机字母数字组合，不要保留示例值。
 
+体验版微信登录配置：
+
+```dotenv
+SERVER_DOMAIN=你的真实API域名
+WECHAT_APP_ID=在服务器填写真实微信小游戏AppID
+WECHAT_APP_SECRET=仅在服务器填写真实AppSecret
+WECHAT_MOCK_LOGIN=false
+WECHAT_API_TIMEOUT_MS=5000
+```
+
+`.env.server` 已被 Git 忽略。不要把真实 `WECHAT_APP_SECRET` 写入
+Dockerfile、前端工程、提交记录或部署日志。
+
 生成随机值可使用：
 
 ```bash
@@ -94,9 +107,27 @@ curl https://你的域名/api/health
 ```text
 HTTP API: https://你的域名/api
 WebSocket: wss://你的域名/ws?token=<JWT>
+远程资源: https://你的域名/game-assets/remote/resources/
 ```
 
-在微信公众平台把该域名加入 `request` 合法域名和 `socket` 合法域名。生产环境必须使用平台认可的 HTTPS 证书；Caddy 会自动续期。
+在微信公众平台把该域名加入 `request`、`socket` 和 `downloadFile`
+合法域名。生产环境必须使用平台认可的 HTTPS 证书；Caddy 会自动续期。
+
+前端完成 Cocos 微信小游戏构建后，将整个 `build/wechatgame/remote`
+目录上传到服务器的：
+
+```text
+/opt/mahjong-fly-bird-backend/game-assets/remote
+```
+
+Caddy 会将 `/game-assets/*` 映射到该目录。不要只上传某个 `native`
+子目录，否则远程 Bundle 的配置清单会缺失。
+
+用本次构建实际生成的配置文件名检查静态资源，不要只请求目录：
+
+```bash
+curl -I https://你的域名/game-assets/remote/resources/config.<本次Hash>.json
+```
 
 前端不连接 Redis、PostgreSQL 或 AI 的 `8001` 端口。
 

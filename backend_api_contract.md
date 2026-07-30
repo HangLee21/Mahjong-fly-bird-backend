@@ -114,10 +114,15 @@ ActionId 映射：
   "minClientVersion": "0.1.0",
   "rulePreset": "qujing-fei-xiaoji-v1.5",
   "assetVersion": "2026.05.28",
-  "wsUrl": "ws://localhost:3000/ws",
+  "apiBaseUrl": "https://api.example.com/api",
+  "wsUrl": "wss://api.example.com/ws",
+  "assetBaseUrl": "https://api.example.com/game-assets/",
   "notice": "欢迎体验曲靖飞小鸡"
 }
 ```
+
+通过 HTTPS 反向代理访问时，后端根据 `X-Forwarded-Proto` 返回
+`https`/`wss` 地址；本地 HTTP 联调仍返回 `http`/`ws`。
 
 推荐启动流程：
 
@@ -133,12 +138,14 @@ valid=false -> Login
 ### POST `/auth/wechat-login`
 
 本地开发默认 `WECHAT_MOCK_LOGIN=true`，`code` 会映射为 `openid=mock_<code>`。
+体验版必须设置 `WECHAT_MOCK_LOGIN=false`。前端把 `wx.login()` 返回的一次性
+临时 `code` 原样传给后端，AppSecret 只存在服务器 `.env.server` 中。
 
 请求：
 
 ```json
 {
-  "code": "dev_user",
+  "code": "<wx.login 返回的临时 code>",
   "nickname": "测试玩家",
   "avatarUrl": ""
 }
@@ -156,6 +163,20 @@ valid=false -> Login
   }
 }
 ```
+
+非法、过期或已使用的 code：
+
+```json
+{
+  "code": "UNAUTHORIZED",
+  "message": "WeChat login code is invalid or expired.",
+  "details": {}
+}
+```
+
+HTTP 状态码为 `401`。微信接口超时返回 `504 WECHAT_SERVICE_TIMEOUT`，
+上游非 JSON、网络故障或 AppID/AppSecret 配置错误返回经过脱敏的
+`WECHAT_SERVICE_ERROR`，响应不会包含 AppSecret、完整微信请求地址或微信原始响应。
 
 ### GET `/auth/session`
 

@@ -34,6 +34,7 @@ const EnvSchema = z.object({
   WECHAT_APP_ID: z.string().default('replace_me'),
   WECHAT_APP_SECRET: z.string().default('replace_me'),
   WECHAT_MOCK_LOGIN: boolFromEnv.default(true),
+  WECHAT_API_TIMEOUT_MS: z.coerce.number().int().min(500).default(5000),
   AI_SERVICE_URL: z.string().default('http://localhost:8001'),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().default(3000),
   MAX_AI_ACTIONS_PER_TICK: z.coerce.number().default(20),

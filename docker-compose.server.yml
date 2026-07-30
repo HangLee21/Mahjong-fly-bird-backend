@@ -89,6 +89,7 @@ services:
       WECHAT_APP_ID: ${WECHAT_APP_ID}
       WECHAT_APP_SECRET: ${WECHAT_APP_SECRET}
       WECHAT_MOCK_LOGIN: ${WECHAT_MOCK_LOGIN:-false}
+      WECHAT_API_TIMEOUT_MS: ${WECHAT_API_TIMEOUT_MS:-5000}
       AI_SERVICE_URL: http://ai:8001
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-5000}
       MAX_AI_ACTIONS_PER_TICK: ${MAX_AI_ACTIONS_PER_TICK:-20}
@@ -134,6 +135,7 @@ services:
       - "${HTTPS_PORT:-443}:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./game-assets:/srv/game-assets:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

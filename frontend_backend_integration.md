@@ -93,11 +93,15 @@ Content-Type: application/json
 
 ```json
 {
-  "code": "dev_user",
+  "code": "<wx.login 返回的临时 code>",
   "nickname": "测试玩家",
   "avatarUrl": ""
 }
 ```
+
+体验版必须调用 `wx.login()` 获取一次性临时 code；不要在前端配置或传输
+微信 AppSecret。后端通过 `jscode2session` 换取 openid 后签发自己的 JWT。
+非法、过期或重复使用的 code 返回 HTTP `401`。
 
 返回：
 

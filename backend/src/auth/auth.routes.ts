@@ -6,7 +6,7 @@ import { AuthService } from './auth.service.js';
 import { UserService } from '../users/user.service.js';
 
 const LoginBody = z.object({
-  code: z.string().min(1),
+  code: z.string().trim().min(1).max(256),
   nickname: z.string().optional(),
   avatarUrl: z.string().optional()
 });

@@ -1,7 +1,19 @@
 {$SERVER_DOMAIN} {
 	encode zstd gzip
 
-	reverse_proxy backend:3000
+	handle_path /game-assets/* {
+		root * /srv/game-assets
+		header {
+			Access-Control-Allow-Origin "*"
+			Cache-Control "public, max-age=31536000, immutable"
+			X-Content-Type-Options "nosniff"
+		}
+		file_server
+	}
+
+	handle {
+		reverse_proxy backend:3000
+	}
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

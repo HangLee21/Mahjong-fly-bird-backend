@@ -1,8 +1,19 @@
 ARG NODE_BASE_IMAGE=node:20-bookworm-slim
 FROM ${NODE_BASE_IMAGE} AS base
 
+ARG DEBIAN_MIRROR=http://deb.debian.org/debian
+ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+
 # Prisma detects the OpenSSL ABI at runtime before loading its native engines.
-RUN apt-get update \
+RUN for source_file in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+      if [ -f "$source_file" ]; then \
+        sed -i \
+          -e "s|https\\?://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" \
+          -e "s|https\\?://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+          "$source_file"; \
+      fi; \
+    done \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/*
 

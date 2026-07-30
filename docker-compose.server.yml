@@ -80,6 +80,8 @@ services:
       dockerfile: backend/Dockerfile
       args:
         NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:20-bookworm-slim}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
         PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-https://binaries.prisma.sh}
         HTTP_PROXY: ${BUILD_HTTP_PROXY:-}

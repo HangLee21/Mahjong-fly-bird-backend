@@ -8,10 +8,14 @@ RUN apt-get update \
 
 FROM base AS build
 
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+ARG PRISMA_ENGINES_MIRROR=https://binaries.prisma.sh
+
 WORKDIR /app
 
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 COPY backend/prisma ./prisma
 RUN npx prisma generate

@@ -80,6 +80,8 @@ services:
       dockerfile: backend/Dockerfile
       args:
         NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:20-bookworm-slim}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-https://binaries.prisma.sh}
     restart: unless-stopped
     init: true
     environment:

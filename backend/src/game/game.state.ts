@@ -69,6 +69,8 @@ export interface PlayerState {
 export interface Meld {
   type: 'CHOW' | 'PONG' | 'KONG_EXPOSED' | 'KONG_CONCEALED' | 'KONG_ADDED';
   tiles: number[];
+  /** Index in `tiles` of the tile claimed from another player's discard. */
+  claimedIndex?: number;
   fromPlayer?: number;
   stepIndex: number;
   containsXiaoJiAsWild?: boolean;

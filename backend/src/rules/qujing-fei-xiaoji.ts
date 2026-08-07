@@ -754,16 +754,36 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     let meld: Meld;
     if (action.type === 'PONG') {
       used = [discard.tile, discard.tile];
-      meld = { type: 'PONG', tiles: [discard.tile, discard.tile, discard.tile], fromPlayer: discard.fromPlayer, stepIndex: state.stepIndex };
+      meld = {
+        type: 'PONG',
+        tiles: [discard.tile, discard.tile, discard.tile],
+        fromPlayer: discard.fromPlayer,
+        stepIndex: state.stepIndex,
+        claimedIndex: 1,
+      };
     } else if (action.type === 'KONG_EXPOSED') {
       const counts = countTiles(player.hand);
       used = counts[discard.tile] >= 3 || state.xiaoJiActiveAsWild === false ? [discard.tile, discard.tile, discard.tile] : [discard.tile, discard.tile, XIAO_JI];
-      meld = { type: 'KONG_EXPOSED', tiles: [discard.tile, ...used], fromPlayer: discard.fromPlayer, stepIndex: state.stepIndex, containsXiaoJiAsWild: used.includes(XIAO_JI) };
+      meld = {
+        type: 'KONG_EXPOSED',
+        tiles: [discard.tile, ...used],
+        fromPlayer: discard.fromPlayer,
+        stepIndex: state.stepIndex,
+        containsXiaoJiAsWild: used.includes(XIAO_JI),
+        claimedIndex: 0,
+      };
     } else {
       const need = chowTiles(discard.tile, action.type);
       if (!need) throw new AppError('ILLEGAL_ACTION', 'Invalid chow.');
       used = need;
-      meld = { type: 'CHOW', tiles: [discard.tile, ...need].sort((a, b) => a - b), fromPlayer: discard.fromPlayer, stepIndex: state.stepIndex };
+      const sortedChowTiles = [discard.tile, ...need].sort((a, b) => a - b);
+      meld = {
+        type: 'CHOW',
+        tiles: sortedChowTiles,
+        fromPlayer: discard.fromPlayer,
+        stepIndex: state.stepIndex,
+        claimedIndex: sortedChowTiles.indexOf(discard.tile),
+      };
     }
 
     const hand = removeTiles(player.hand, used);
@@ -794,6 +814,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       player.hand = hand;
       meld.type = 'KONG_ADDED';
       meld.tiles.push(tile);
+      meld.claimedIndex = meld.tiles.length - 1;
       meld.containsXiaoJiAsWild = meld.containsXiaoJiAsWild || !player.hand.includes(tile);
       state.kongCount = (state.kongCount ?? 0) + 1;
       state.lastKong = { playerIndex, stepIndex: state.stepIndex, kind: 'KONG_ADDED' };

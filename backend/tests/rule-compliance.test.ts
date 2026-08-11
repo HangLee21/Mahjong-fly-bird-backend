@@ -68,7 +68,7 @@ describe('公开杠牌补翻', () => {
     const s = kongState();
     const afterKong = engine().applyAction(s, 0, { type: 'KONG_ADDED', tile: 5, actionId: 108 }).nextState;
     expect(afterKong.status).toBe('PLAYING');
-    expect(afterKong.pendingKongSelection).toEqual({ playerIndex: 0, kind: 'KONG_ADDED' });
+    expect(afterKong.pendingKongSelection).toMatchObject({ playerIndex: 0, kind: 'KONG_ADDED' });
     expect(engine().getLegalActions(afterKong, 0).map((a) => a.tile).sort()).toEqual([7, 9]);
 
     const afterTake = engine().applyAction(afterKong, 0, { type: 'SELECT_KONG_TILE', tile: 9, actionId: 109 }).nextState;
@@ -525,7 +525,7 @@ describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
     const kongMeld = afterKong.players[1].melds.find((meld) => meld.type === 'KONG_CONCEALED');
     expect(kongMeld?.tiles).toEqual([5, 5, 18, 18]);
     expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
-    expect(afterKong.pendingKongSelection).toEqual({ playerIndex: 1, kind: 'KONG_CONCEALED' });
+    expect(afterKong.pendingKongSelection).toMatchObject({ playerIndex: 1, kind: 'KONG_CONCEALED' });
     expect(eng.getLegalActions(afterKong, 1).map((action) => action.tile).sort()).toEqual([7, 9]);
 
     const afterTake = eng.applyAction(afterKong, 1, { type: 'SELECT_KONG_TILE', tile: 9, actionId: 109 }).nextState;
@@ -555,5 +555,52 @@ describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
     const kongMeld = afterKong.players[1].melds.find((meld) => meld.type === 'KONG_CONCEALED');
     expect(kongMeld?.tiles).toEqual([5, 5, 5, 18]);
     expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
+  });
+});
+
+describe('碰后加杠与胡牌可跳过', () => {
+  it('pong first, then allows added kong with the real fourth tile on a later turn', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].hand = [5, 27, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 30];
+    s.players[1].hand = [5, 5, 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11];
+    s.players[2].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+
+    const afterDiscard = eng.applyAction(s, 0, { type: 'DISCARD', tile: 5, actionId: 5 }).nextState;
+    expect(eng.getLegalActions(afterDiscard, 1).some((action) => action.type === 'PONG')).toBe(true);
+    const afterPong = eng.applyAction(afterDiscard, 1, { type: 'PONG', tile: 5, actionId: 102 }).nextState;
+    expect(afterPong.players[1].melds.some((meld) => meld.type === 'PONG' && meld.tiles[0] === 5)).toBe(true);
+
+    // Later own turn with the fourth 5 in hand: added kong is available.
+    const later = state({ ...afterPong, currentPlayer: 1, status: 'PLAYING', lastDiscard: undefined, pendingResponses: [] });
+    later.players[1].hand = [5, 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12];
+    later.publicKongSlots = [{ visible: 9, hidden: 8 }];
+    expect(eng.getLegalActions(later, 1).some((action) => action.type === 'KONG_ADDED' && action.tile === 5)).toBe(true);
+    const afterKong = eng.applyAction(later, 1, { type: 'KONG_ADDED', tile: 5, actionId: 108 }).nextState;
+    expect(afterKong.players[1].melds.some((meld) => meld.type === 'KONG_ADDED' && meld.tiles[0] === 5)).toBe(true);
+  });
+
+  it('passing a discard win keeps the game going for the next player', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].hand = [27, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    s.players[1].hand = [28, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12];
+    s.players[2].hand = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 27];
+    s.players[3].hand = [12, 13, 14, 15, 16, 17, 19, 20, 21, 22, 23, 24, 25];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+
+    const afterDiscard = eng.applyAction(s, 0, { type: 'DISCARD', tile: 27, actionId: 27 }).nextState;
+    const winActions = eng.getLegalActions(afterDiscard, 2);
+    expect(winActions.some((action) => action.type === 'WIN')).toBe(true);
+    expect(winActions.some((action) => action.type === 'PASS')).toBe(true);
+
+    const afterPass = eng.applyAction(afterDiscard, 2, { type: 'PASS', actionId: 100 }).nextState;
+    expect(afterPass.status).toBe('PLAYING');
+    expect(afterPass.currentPlayer).toBe(1);
+    expect(afterPass.players[1].hand).toHaveLength(14);
   });
 });

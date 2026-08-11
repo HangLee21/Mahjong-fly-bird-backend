@@ -125,6 +125,13 @@ export function registerWebSocketServer(server: Server) {
         const subscribedRooms = [...session.rooms];
         sessions.delete(session.connectionId);
         for (const roomId of subscribedRooms) {
+          // Never leave the table waiting on an offline player's response.
+          void gameService.resolveDisconnectedPlayer(roomId, session.userId).catch((error) => {
+            const normalized = errorResponse(error);
+            if (!['ROOM_NOT_FOUND', 'GAME_NOT_STARTED'].includes(String(normalized.body.code))) {
+              logger.warn({ error, roomId, userId: session.userId }, 'Failed to auto-pass disconnected player');
+            }
+          });
           scheduleDisconnectedPlayerCleanup(sessions, rooms, session.userId, roomId);
         }
       });

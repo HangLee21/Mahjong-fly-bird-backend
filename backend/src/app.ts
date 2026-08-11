@@ -8,6 +8,7 @@ import { registerAuthRoutes } from './auth/auth.routes.js';
 import { errorResponse, AppError } from './common/errors.js';
 import { logger } from './common/logger.js';
 import { env } from './config/env.js';
+import { aiCircuitBreaker } from './ai/ai-circuit-breaker.js';
 import { registerGameRoutes } from './game/game.routes.js';
 import { registerLobbyRoutes } from './lobby/lobby.routes.js';
 import { registerReplayRoutes } from './replay/replay.routes.js';
@@ -17,7 +18,7 @@ export async function buildApp() {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
   await app.register(cors, { origin: true });
 
-  app.get('/api/health', async () => ({ ok: true }));
+  app.get('/api/health', async () => ({ ok: true, ai: aiCircuitBreaker.status() }));
 
   await registerAppConfigRoutes(app);
   await registerAuthRoutes(app);

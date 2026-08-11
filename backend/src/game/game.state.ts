@@ -32,6 +32,7 @@ export interface GameState {
   pendingKongSelection?: {
     playerIndex: number;
     kind: Meld['type'];
+    deadlineAt?: number;
   };
   afterKongDiscardFrom?: number;
   specialRuns?: Array<{

@@ -22,6 +22,9 @@ export function buildPlayerGameView(
   const player = state.players[playerIndex];
   const legalActions = ruleEngine.getLegalActions(state, playerIndex);
   const players = state.players.map(publicPlayerView);
+  const responseDeadlines = (state.pendingResponses ?? [])
+    .map((pending) => pending.deadlineAt)
+    .filter((deadline): deadline is number => deadline !== undefined);
   return {
     gameId: state.gameId,
     roomId: state.roomId,
@@ -47,6 +50,7 @@ export function buildPlayerGameView(
     isFinalRound: (state.currentRound ?? state.roundIndex + 1) >= (state.maxRounds ?? 1),
     publicKongTiles: (state.publicKongSlots ?? []).map((slot) => slot.visible),
     xiaoJiActiveAsWild: state.xiaoJiActiveAsWild ?? true,
+    deadlineAt: state.pendingKongSelection?.deadlineAt ?? (responseDeadlines.length > 0 ? Math.min(...responseDeadlines) : undefined),
     result: state.result ?? null,
     wallCount: state.wall.length,
     wallTilesRemaining: state.wall.length,

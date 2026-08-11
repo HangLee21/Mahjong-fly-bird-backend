@@ -32,6 +32,8 @@ export interface PlayerGameView {
   isFinalRound?: boolean;
   publicKongTiles?: number[];
   xiaoJiActiveAsWild?: boolean;
+  /** Earliest actionable deadline (pending response or kong selection), ms epoch. */
+  deadlineAt?: number;
   result?: unknown;
   wallCount: number;
   wallTilesRemaining?: number;

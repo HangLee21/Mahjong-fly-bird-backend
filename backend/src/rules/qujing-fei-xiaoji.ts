@@ -1,4 +1,5 @@
 import { DEFAULT_PLAYER_COUNT, TILE_TYPE_COUNT } from '../config/constants.js';
+import { env } from '../config/env.js';
 import { nowMs } from '../common/time.js';
 import { AppError } from '../common/errors.js';
 import { buildPlayerGameView } from '../game/game.serializer.js';
@@ -74,6 +75,10 @@ function isSuited(tile: number) {
 
 function sortedUnique(tiles: number[]) {
   return [...new Set(tiles)].sort((a, b) => a - b);
+}
+
+function responseDeadline() {
+  return nowMs() + env.RESPONSE_TIMEOUT_MS;
 }
 
 function allPlayerTiles(player: PlayerState) {
@@ -533,7 +538,7 @@ function finishDraw(state: GameState, events: GameEvent[]) {
 function beginKongTileSelection(state: GameState, playerIndex: number, kind: Meld['type'], events: GameEvent[]) {
   const visible = (state.publicKongSlots ?? []).map((slot) => slot.visible);
   if (visible.length <= 1) return takePublicKongTile(state, playerIndex, visible[0], events);
-  state.pendingKongSelection = { playerIndex, kind };
+  state.pendingKongSelection = { playerIndex, kind, deadlineAt: responseDeadline() };
   state.currentPlayer = playerIndex;
   state.status = 'PLAYING';
   return undefined;
@@ -639,7 +644,8 @@ function beginResponses(state: GameState, discard: { tile: number; fromPlayer: n
       pending.push({
         playerIndex: player.seatIndex,
         availableActions: actions,
-        priority: Math.max(...actions.map(priorityFor))
+        priority: Math.max(...actions.map(priorityFor)),
+        deadlineAt: responseDeadline()
       });
     }
   }
@@ -996,7 +1002,8 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     state.pendingResponses = robbers.map((robber) => ({
       playerIndex: robber,
       availableActions: [{ type: 'WIN', tile, actionId: encodeAction({ type: 'WIN' }) }],
-      priority: 4
+      priority: 4,
+      deadlineAt: responseDeadline()
     }));
     events.push({ type: 'WAITING_RESPONSE', responses: state.pendingResponses });
     return undefined;

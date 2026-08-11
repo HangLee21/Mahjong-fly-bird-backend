@@ -15,12 +15,15 @@ import { logger } from '../common/logger.js';
 import { RoomRepository } from '../rooms/room.repository.js';
 import { normalizeRoomRules } from '../rooms/room.presenter.js';
 import { getBroadcaster } from '../websocket/ws-broadcast.js';
+import { nextOverdueAction, earliestDeadline, autoResolveAction } from './game-deadline.js';
 import type { GameState } from './game.state.js';
 import type { PlayerGameView } from './game.types.js';
 
 export type ActionSource = 'HUMAN' | 'AI' | 'FALLBACK' | 'SYSTEM';
 
 export class GameService {
+  private readonly roomDeadlineTimers = new Map<string, NodeJS.Timeout>();
+
   constructor(private readonly rooms = new RoomRepository()) {}
 
   async startGame(roomId: string, userId: string) {
@@ -89,7 +92,7 @@ export class GameService {
       await this.rooms.setStatus(room.id, 'PLAYING');
       await roomStateStore.set(room.id, state);
       await this.broadcastViews(state);
-      setTimeout(() => void this.advanceAi(room.id), 0);
+      this.scheduleAdvanceAi(room.id);
       const playerIndex = state.players.findIndex((player) => player.userId === userId);
       if (playerIndex < 0) throw new AppError('ROOM_NOT_JOINED', 'User is not seated in room.');
       return ruleEngine.buildPlayerView(state, playerIndex);
@@ -104,13 +107,15 @@ export class GameService {
     const view = await lockManager.withRoomLock(lockRoomId, async () => {
       const state = await this.getState(lockRoomId);
       internalRoomId = state.roomId;
-      const playerIndex = state.players.findIndex((player) => player.userId === userId);
+      const expired = await this.expireOverdue(state);
+      if (expired !== state) await this.broadcastViews(expired);
+      const playerIndex = expired.players.findIndex((player) => player.userId === userId);
       if (playerIndex < 0) throw new AppError('ROOM_NOT_JOINED', 'User is not in room.');
-      const nextState = await this.applyValidatedAction(state, playerIndex, action, 'HUMAN');
+      const nextState = await this.applyValidatedAction(expired, playerIndex, action, 'HUMAN');
       await this.broadcastViews(nextState);
       return ruleEngine.buildPlayerView(nextState, playerIndex);
     });
-    setTimeout(() => void this.advanceAi(internalRoomId), 0);
+    this.scheduleAdvanceAi(internalRoomId);
     return view;
   }
 
@@ -229,46 +234,145 @@ export class GameService {
 
   async advanceAi(roomId: string) {
     for (let count = 0; count < env.MAX_AI_ACTIONS_PER_TICK; count += 1) {
-      const moved = await lockManager.withRoomLock(roomId, async () => {
-        const state = await roomStateStore.get(roomId);
-        if (!state || !['PLAYING', 'WAITING_RESPONSE'].includes(state.status)) return false;
-        const aiPlayer = this.nextAiPlayerWithActions(state);
-        if (!aiPlayer) return false;
+      let moved = false;
+      try {
+        moved = await lockManager.withRoomLock(roomId, async () => {
+          const state = await roomStateStore.get(roomId);
+          if (!state || !['PLAYING', 'WAITING_RESPONSE'].includes(state.status)) return false;
+          const current = await this.expireOverdue(state);
+          const aiPlayer = this.nextAiPlayerWithActions(current);
+          if (!aiPlayer) {
+            if (current !== state) await this.broadcastViews(current);
+            return false;
+          }
 
-        const legal = ruleEngine.getLegalActions(state, aiPlayer.seatIndex);
-        if (legal.length === 0) return false;
+          const legal = ruleEngine.getLegalActions(current, aiPlayer.seatIndex);
+          if (legal.length === 0) return false;
 
-        const legalActionIds = legal.map(encodeAction);
-        let source: ActionSource = 'AI';
-        let action: GameAction;
-        let aiModel = aiPlayer.aiModel ?? 'v3-lite';
+          const legalActionIds = legal.map(encodeAction);
+          let source: ActionSource = 'AI';
+          let action: GameAction;
+          let aiModel = aiPlayer.aiModel ?? 'v3-lite';
 
-        try {
-          const ai = await aiGateway.requestAction({
-            roomId,
-            gameId: state.gameId,
-            playerIndex: aiPlayer.seatIndex,
-            modelVersion: aiModel,
-            observation: buildObservation(state, aiPlayer.seatIndex),
-            legalActions: legalActionIds,
-            state
-          });
-          const decoded = decodeAiAction(ai, legal);
-          action = legal.some((item) => sameAction(item, decoded)) ? decoded : fallbackAction(legal);
-          if (ai.fallbackUsed || !sameAction(action, decoded)) source = 'FALLBACK';
-          aiModel = ai.modelVersion;
-        } catch (error) {
-          logger.warn({ error, roomId, gameId: state.gameId, playerIndex: aiPlayer.seatIndex, aiModel }, 'AI action request failed; using fallback action');
-          action = fallbackAction(legal);
-          source = 'FALLBACK';
-        }
+          try {
+            const ai = await aiGateway.requestAction({
+              roomId,
+              gameId: current.gameId,
+              playerIndex: aiPlayer.seatIndex,
+              modelVersion: aiModel,
+              observation: buildObservation(current, aiPlayer.seatIndex),
+              legalActions: legalActionIds,
+              state: current
+            });
+            const decoded = decodeAiAction(ai, legal);
+            action = legal.some((item) => sameAction(item, decoded)) ? decoded : fallbackAction(legal);
+            if (ai.fallbackUsed || !sameAction(action, decoded)) source = 'FALLBACK';
+            aiModel = ai.modelVersion;
+          } catch (error) {
+            logger.warn({ error, roomId, gameId: current.gameId, playerIndex: aiPlayer.seatIndex, aiModel }, 'AI action request failed; using fallback action');
+            action = fallbackAction(legal);
+            source = 'FALLBACK';
+          }
 
-        const nextState = await this.applyValidatedAction(state, aiPlayer.seatIndex, action, source, aiModel);
-        await this.broadcastViews(nextState);
-        return Boolean(this.nextAiPlayerWithActions(nextState));
-      });
+          const nextState = await this.applyValidatedAction(current, aiPlayer.seatIndex, action, source, aiModel);
+          await this.broadcastViews(nextState);
+          return Boolean(this.nextAiPlayerWithActions(nextState));
+        });
+      } catch (error) {
+        // Transient lock/Redis/AI infrastructure failures must not crash the
+        // process or strand the room; retry shortly and stop this cycle.
+        logger.warn({ error, roomId }, 'AI advance step failed; scheduling retry');
+        this.scheduleAdvanceAi(roomId, env.AI_ADVANCE_RETRY_DELAY_MS);
+        return;
+      }
       if (!moved) break;
     }
+  }
+
+  /**
+   * Auto-applies any overdue pending responses / kong selections (SYSTEM pass).
+   * Returns the (possibly unchanged) final state.
+   */
+  private async expireOverdue(state: GameState): Promise<GameState> {
+    let current = state;
+    for (let guard = 0; guard < 8; guard += 1) {
+      const overdue = nextOverdueAction(current);
+      if (!overdue) break;
+      const legal = ruleEngine.getLegalActions(current, overdue.playerIndex);
+      if (!legal.some((item) => sameAction(item, overdue.action))) break;
+      current = await this.applyValidatedAction(current, overdue.playerIndex, overdue.action, 'SYSTEM');
+    }
+    return current;
+  }
+
+  /**
+   * Immediately auto-passes a disconnected player's pending response so the
+   * rest of the table is never blocked by an offline seat.
+   */
+  async resolveDisconnectedPlayer(roomId: string, userId: string) {
+    let advanced = false;
+    await lockManager.withRoomLock(roomId, async () => {
+      const state = await roomStateStore.get(roomId);
+      if (!state) return;
+      const playerIndex = state.players.findIndex((player) => player.userId === userId);
+      if (playerIndex < 0) return;
+      const forced = autoResolveAction(state, playerIndex);
+      if (!forced) return;
+      const legal = ruleEngine.getLegalActions(state, playerIndex);
+      if (!legal.some((item) => sameAction(item, forced.action))) return;
+      const next = await this.applyValidatedAction(state, playerIndex, forced.action, 'SYSTEM');
+      await this.broadcastViews(next);
+      advanced = true;
+    });
+    if (advanced) this.scheduleAdvanceAi(roomId);
+  }
+
+  private scheduleAdvanceAi(roomId: string, delayMs = 0) {
+    const timer = setTimeout(() => {
+      void this.advanceAi(roomId).catch((error) => {
+        logger.error({ error, roomId }, 'AI advance failed unexpectedly');
+      });
+    }, delayMs);
+    timer.unref?.();
+  }
+
+  /**
+   * Schedules a timer at the earliest pending response/kong deadline so idle
+   * players are auto-passed even when nobody submits an action.
+   */
+  private scheduleRoomDeadline(roomId: string) {
+    const existing = this.roomDeadlineTimers.get(roomId);
+    if (existing) clearTimeout(existing);
+    void roomStateStore
+      .get(roomId)
+      .then((state) => {
+        if (!state) return;
+        const deadline = earliestDeadline(state);
+        if (deadline === undefined) return;
+        const delay = Math.max(0, deadline - Date.now());
+        const timer = setTimeout(() => {
+          this.roomDeadlineTimers.delete(roomId);
+          void this.expireRoomAndAdvance(roomId);
+        }, delay);
+        timer.unref?.();
+        this.roomDeadlineTimers.set(roomId, timer);
+      })
+      .catch((error) => logger.warn({ error, roomId }, 'Failed to schedule room response deadline'));
+  }
+
+  private async expireRoomAndAdvance(roomId: string) {
+    try {
+      await lockManager.withRoomLock(roomId, async () => {
+        const state = await roomStateStore.get(roomId);
+        if (!state) return;
+        const next = await this.expireOverdue(state);
+        if (next !== state) await this.broadcastViews(next);
+      });
+    } catch (error) {
+      logger.warn({ error, roomId }, 'Failed to expire overdue room state');
+      return;
+    }
+    this.scheduleAdvanceAi(roomId);
   }
 
   private nextAiPlayerWithActions(state: GameState) {
@@ -289,6 +393,7 @@ export class GameService {
       broadcaster.sendGameView(state.roomId, player.userId, ruleEngine.buildPlayerView(state, player.seatIndex));
     }
     broadcaster.broadcastRoom(state.roomId, 'GAME_EVENT', { gameId: state.gameId, stepIndex: state.stepIndex, status: state.status });
+    this.scheduleRoomDeadline(state.roomId);
   }
 }
 

@@ -18,6 +18,8 @@ export interface GameState {
   publicKongSlots?: Array<{ visible: number; hidden?: number }>;
   xiaoJiActiveAsWild?: boolean;
   kongCount?: number;
+  /** Consecutive kong replacement draws per player on the current turn (双杠上花). */
+  kongDrawStreak?: number[];
   lastDraw?: {
     playerIndex: number;
     tile: number;

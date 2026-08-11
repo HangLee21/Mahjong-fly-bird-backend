@@ -556,6 +556,117 @@ describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
     expect(kongMeld?.tiles).toEqual([5, 5, 5, 18]);
     expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
   });
+
+  it('pong + chick added kong, draw 6-dots from the public slot, win counts as kong flower', () => {
+    const eng = engine();
+    const s = state();
+    // Player 0 holds a pong of 9-man on the left plus two chicks; the hand is
+    // already a 14-tile win (both chicks as wilds), and a kong is also legal.
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [8, 8, 8], stepIndex: 0, claimedIndex: 1, fromPlayer: 1 },
+      { type: 'CHOW', tiles: [9, 10, 11], stepIndex: 1, claimedIndex: 1, fromPlayer: 3 }
+    ];
+    s.players[0].hand = [16, 17, 17, 18, 18, 24, 25, 26];
+    s.players[1].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[2].hand = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+    s.publicKongSlots = [
+      { visible: 14, hidden: 27 },
+      { visible: 5, hidden: 28 }
+    ];
+    s.wall = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+    // Both the direct win and the added kong must be offered so the player can
+    // choose the kong path instead of being forced into a flat self-draw win.
+    const legal = eng.getLegalActions(s, 0);
+    expect(legal.some((action) => action.type === 'WIN')).toBe(true);
+    expect(legal.some((action) => action.type === 'KONG_ADDED' && action.tile === 8)).toBe(true);
+
+    const afterKong = eng.applyAction(s, 0, { type: 'KONG_ADDED', tile: 8, actionId: 108 }).nextState;
+    const kongMeld = afterKong.players[0].melds.find((meld) => meld.type === 'KONG_ADDED');
+    expect(kongMeld?.tiles).toEqual([8, 8, 8, 18]);
+    expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
+    expect(afterKong.pendingKongSelection).toMatchObject({ playerIndex: 0, kind: 'KONG_ADDED' });
+
+    const afterTake = eng.applyAction(afterKong, 0, { type: 'SELECT_KONG_TILE', tile: 14, actionId: 109 }).nextState;
+    expect(afterTake.players[0].hand).toContain(14);
+    expect(afterTake.lastDraw).toMatchObject({ playerIndex: 0, tile: 14, source: 'PUBLIC_KONG' });
+
+    const winActions = eng.getLegalActions(afterTake, 0).filter((action) => action.type === 'WIN');
+    expect(winActions).toHaveLength(1);
+    const result = eng.applyAction(afterTake, 0, { type: 'WIN', actionId: 101 });
+    expect(result.nextState.status).toBe('FINISHED');
+    expect(result.scoreResult?.fanItems?.some((item) => item.code === 'KONG_FLOWER')).toBe(true);
+    expect(result.scoreResult?.fanItems?.some((item) => item.code === 'DOUBLE_KONG')).toBe(false);
+  });
+
+  it('the same 14-tile win without konging only scores the base fan', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [8, 8, 8], stepIndex: 0, claimedIndex: 1, fromPlayer: 1 },
+      { type: 'CHOW', tiles: [9, 10, 11], stepIndex: 1, claimedIndex: 1, fromPlayer: 3 }
+    ];
+    s.players[0].hand = [16, 17, 17, 18, 18, 24, 25, 26];
+    s.players[1].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[2].hand = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+
+    const result = eng.applyAction(s, 0, { type: 'WIN', actionId: 101 });
+    expect(result.nextState.status).toBe('FINISHED');
+    expect(result.scoreResult?.fanItems?.some((item) => item.code === 'KONG_FLOWER')).toBe(false);
+    expect(result.scoreResult?.fanItems?.some((item) => item.code === 'BASIC_WIN')).toBe(true);
+  });
+
+  it('wins with double kong flower after two consecutive kongs on the same turn', () => {
+    const eng = engine();
+    const s = state();
+    // Pong of 9-man plus two public kong draws: the first kong upgrades the pong
+    // with the chick, the second is a concealed 5-dot kong; both replacement
+    // draws (8-dot) complete the hand with 7/8/9-tiao and a pair of 8-dot.
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [8, 8, 8], stepIndex: 0, claimedIndex: 1, fromPlayer: 1 },
+      { type: 'CHOW', tiles: [9, 10, 11], stepIndex: 1, claimedIndex: 1, fromPlayer: 3 }
+    ];
+    s.players[0].hand = [13, 13, 13, 13, 18, 24, 25, 26];
+    s.players[1].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[2].hand = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+    s.publicKongSlots = [
+      { visible: 16, hidden: 27 },
+      { visible: 16, hidden: 28 }
+    ];
+    s.wall = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+    const legal = eng.getLegalActions(s, 0);
+    expect(legal.some((action) => action.type === 'KONG_ADDED' && action.tile === 8)).toBe(true);
+    expect(legal.some((action) => action.type === 'KONG_CONCEALED' && action.tile === 13)).toBe(true);
+
+    const afterFirstKong = eng.applyAction(s, 0, { type: 'KONG_ADDED', tile: 8, actionId: 108 }).nextState;
+    expect(afterFirstKong.kongDrawStreak?.[0]).toBe(0);
+    const afterFirstTake = eng.applyAction(afterFirstKong, 0, { type: 'SELECT_KONG_TILE', tile: 16, actionId: 109 }).nextState;
+    expect(afterFirstTake.kongDrawStreak?.[0]).toBe(1);
+
+    const afterSecondKong = eng.applyAction(afterFirstTake, 0, { type: 'KONG_CONCEALED', tile: 13, actionId: 107 }).nextState;
+    const afterSecondTake = eng.applyAction(afterSecondKong, 0, { type: 'SELECT_KONG_TILE', tile: 16, actionId: 109 }).nextState;
+    expect(afterSecondTake.kongDrawStreak?.[0]).toBe(2);
+    expect(afterSecondTake.lastDraw).toMatchObject({ playerIndex: 0, tile: 16, source: 'PUBLIC_KONG' });
+
+    const winActions = eng.getLegalActions(afterSecondTake, 0).filter((action) => action.type === 'WIN');
+    expect(winActions).toHaveLength(1);
+    const result = eng.applyAction(afterSecondTake, 0, { type: 'WIN', actionId: 101 });
+    expect(result.nextState.status).toBe('FINISHED');
+    const fanCodes = result.scoreResult?.fanItems?.map((item) => item.code) ?? [];
+    expect(fanCodes).toContain('DOUBLE_KONG_FLOWER');
+    expect(fanCodes).not.toContain('KONG_FLOWER');
+    expect(fanCodes).toContain('DOUBLE_KONG');
+  });
 });
 
 describe('碰后加杠与胡牌可跳过', () => {

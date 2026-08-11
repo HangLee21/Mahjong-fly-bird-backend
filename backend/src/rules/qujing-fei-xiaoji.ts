@@ -371,6 +371,7 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     if (state.lastDraw?.playerIndex === playerIndex && state.lastDraw.source === 'PUBLIC_KONG' && source === 'SELF_DRAW') {
       const lastTile = state.lastDraw.tile;
       if (lastTile === 13) addFan(fanItems, 'FIVE_MEI_HUA', '五梅花', 2, '杠后摸公开杠牌 5 饼并以此牌和牌');
+      else if ((state.kongDrawStreak?.[playerIndex] ?? 1) >= 2) addFan(fanItems, 'DOUBLE_KONG_FLOWER', '双杠上花', 2);
       else addFan(fanItems, 'KONG_FLOWER', '杠上开花', 1);
     }
     if (source === 'DISCARD' && state.afterKongDiscardFrom !== undefined && state.afterKongDiscardFrom === (state.lastDiscard?.fromPlayer ?? -1)) {
@@ -501,6 +502,7 @@ function priorityFor(action: GameAction) {
 }
 
 function drawForPlayer(state: GameState, playerIndex: number, events: GameEvent[]) {
+  if (state.kongDrawStreak) state.kongDrawStreak.fill(0);
   if (state.furiten) {
     state.furiten[playerIndex] = { passedWinTiles: [], refusedXiaoJiWin: false, passedPongTiles: [] };
   }
@@ -552,6 +554,8 @@ function takePublicKongTile(state: GameState, playerIndex: number, selectedTile:
   if (replacement !== undefined) {
     state.players[playerIndex].hand.push(replacement);
     state.lastDraw = { playerIndex, tile: replacement, source: 'PUBLIC_KONG', stepIndex: state.stepIndex };
+    const streaks = state.kongDrawStreak ?? (state.kongDrawStreak = state.players.map(() => 0));
+    streaks[playerIndex] = (streaks[playerIndex] ?? 0) + 1;
     events.push({ type: 'TILE_DRAWN', playerIndex });
   }
   // 补翻: prefer the hidden tile below the taken stack; otherwise reveal the top
@@ -773,6 +777,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       publicKongSlots: deal.publicKongSlots,
       xiaoJiActiveAsWild: true,
       kongCount: 0,
+      kongDrawStreak: players.map(() => 0),
       specialRuns: players.map(() => ({ honorDiscards: 0, yaojiuDiscards: 0, containsXiaoJiDiscard: false, brokenByMeld: false })),
       furiten: players.map(() => ({ passedWinTiles: [], refusedXiaoJiWin: false, passedPongTiles: [] })),
       firstRound: { count: 0, broken: false },
@@ -884,6 +889,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       player.hand = hand;
       if ((nextState.handErrors?.[playerIndex] ?? 0) > 0 && nextState.handErrors) nextState.handErrors[playerIndex] -= 1;
       player.discards.push(action.tile);
+      if (nextState.kongDrawStreak) nextState.kongDrawStreak.fill(0);
       recordDiscardRun(nextState, playerIndex, action.tile);
       if (action.tile === XIAO_JI) {
         // 小鸡拒和振听: discarding xiaoji while holding a self-draw win blocks discard wins.
@@ -1010,6 +1016,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
   }
 
   private applyMeldResponse(state: GameState, playerIndex: number, action: GameAction, discard: { tile: number; fromPlayer: number; stepIndex: number }, events: GameEvent[]) {
+    if (state.kongDrawStreak) state.kongDrawStreak.fill(0);
     const player = state.players[playerIndex];
     let used: number[] = [];
     let meld: Meld;

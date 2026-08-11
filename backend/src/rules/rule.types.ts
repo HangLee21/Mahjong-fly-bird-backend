@@ -41,4 +41,5 @@ export type GameEvent =
   | { type: 'WIN_DECLARED'; playerIndex: number }
   | { type: 'SCORE_SETTLED'; result: ScoreResult }
   | { type: 'TURN_CHANGED'; currentPlayer: number }
-  | { type: 'WAITING_RESPONSE'; responses: PendingResponse[] };
+  | { type: 'WAITING_RESPONSE'; responses: PendingResponse[] }
+  | { type: 'ROUND_REDEALT' };

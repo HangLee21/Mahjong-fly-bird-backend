@@ -35,15 +35,23 @@ export function buildPredictState(state: GameState, playerIndex: number): Predic
   const phase = state.status === 'WAITING_RESPONSE' ? 'claim' : 'discard';
   const responders = (state.pendingResponses ?? []).map((pending) => pending.playerIndex);
   const pending =
-    phase === 'claim' && state.lastDiscard
+    state.pendingRobKong
       ? {
-          discarder: state.lastDiscard.fromPlayer,
-          tile: state.lastDiscard.tile,
+          discarder: state.pendingRobKong.fromPlayer,
+          tile: state.pendingRobKong.tile,
           responders,
           index: Math.max(0, responders.indexOf(playerIndex)),
-          kind: 'discard' as const
+          kind: 'rob_kong' as const
         }
-      : null;
+      : phase === 'claim' && state.lastDiscard
+        ? {
+            discarder: state.lastDiscard.fromPlayer,
+            tile: state.lastDiscard.tile,
+            responders,
+            index: Math.max(0, responders.indexOf(playerIndex)),
+            kind: 'discard' as const
+          }
+        : null;
 
   return {
     hands: state.players.map((player) => (player.seatIndex === playerIndex ? [...player.hand] : [])),
@@ -54,7 +62,7 @@ export function buildPredictState(state: GameState, playerIndex: number): Predic
     current_player: state.currentPlayer,
     phase,
     wall_count: state.wall.length,
-    kong_pool: [...(state.publicKongTiles ?? [])],
+    kong_pool: (state.publicKongSlots ?? []).map((slot) => slot.visible),
     last_discard: state.lastDiscard?.tile ?? null,
     last_discard_player: state.lastDiscard?.fromPlayer ?? null,
     pending,

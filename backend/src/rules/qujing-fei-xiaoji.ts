@@ -1,4 +1,4 @@
-import { DEFAULT_PLAYER_COUNT, INITIAL_HAND_SIZE, TILE_TYPE_COUNT } from '../config/constants.js';
+import { DEFAULT_PLAYER_COUNT, TILE_TYPE_COUNT } from '../config/constants.js';
 import { nowMs } from '../common/time.js';
 import { AppError } from '../common/errors.js';
 import { buildPlayerGameView } from '../game/game.serializer.js';
@@ -8,6 +8,7 @@ import { hashJson } from '../game/game.snapshot.js';
 import type { GameAction } from './actions.js';
 import { encodeAction, sameAction } from './actions.js';
 import { shuffleWall, countTiles } from './tile.js';
+import { dealInitialHands } from './deal.js';
 import type { GameEvent, RuleEngine, RuleResult, ScoreResult } from './rule.types.js';
 
 const XIAO_JI = 18; // 1-tiao in the 0-33 tile mapping.
@@ -206,22 +207,26 @@ function isSevenPairs(tiles: number[]) {
 }
 
 function sevenPairsWildUsage(tiles: number[], allowWild = true) {
-  if (tiles.length !== 14) return { ok: false, wildcardsUsed: 0, hasQuadPair: false };
+  if (tiles.length !== 14) return { ok: false, wildcardsUsed: 0, hasQuadPair: false, quadTiles: [] as number[] };
   const counts = countTiles(tiles);
   const wildcards = allowWild ? counts[XIAO_JI] : 0;
   if (allowWild) counts[XIAO_JI] = 0;
   let need = 0;
   let pairs = 0;
   let hasQuadPair = false;
-  for (const count of counts) {
+  const quadTiles: number[] = [];
+  counts.forEach((count, tile) => {
     pairs += Math.floor(count / 2);
-    if (count >= 4) hasQuadPair = true;
+    if (count >= 4) {
+      hasQuadPair = true;
+      quadTiles.push(tile);
+    }
     if (count % 2 === 1) need += 1;
-  }
-  if (need > wildcards) return { ok: false, wildcardsUsed: 0, hasQuadPair };
+  });
+  if (need > wildcards) return { ok: false, wildcardsUsed: 0, hasQuadPair, quadTiles };
   pairs += need;
   pairs += Math.floor((wildcards - need) / 2);
-  return { ok: pairs >= 7, wildcardsUsed: need, hasQuadPair };
+  return { ok: pairs >= 7, wildcardsUsed: need, hasQuadPair, quadTiles };
 }
 
 function isLanPai(tiles: number[]) {
@@ -319,7 +324,7 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   const fanItems: FanItem[] = [];
   const selfDrawLike = source === 'SELF_DRAW' || source === 'ROB_KONG';
 
-  if (countTiles(player.hand)[XIAO_JI] === 4) {
+  if (source === 'SELF_DRAW' && countTiles(player.hand)[XIAO_JI] === 4) {
     addFan(fanItems, 'FOUR_XIAO_JI', '四小鸡', 3, '四张小鸡必须都在手牌中，不与其他牌型叠加');
     return { ok: true, code: 'FOUR_XIAO_JI', title: '四小鸡', fan: 3, points: 8, fanItems, usesXiaoJiAsWild: false, basicOnly: false, selfDrawLike: true };
   }
@@ -337,7 +342,7 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     }
   }
 
-  const sevenPairs = openMeldCount === 0 ? sevenPairsWildUsage(tiles, allowWild) : { ok: false, wildcardsUsed: 0, hasQuadPair: false };
+  const sevenPairs = openMeldCount === 0 ? sevenPairsWildUsage(tiles, allowWild) : { ok: false, wildcardsUsed: 0, hasQuadPair: false, quadTiles: [] as number[] };
   const lanPai = openMeldCount === 0 && isLanPai(tiles);
   const qixingLanPai = lanPai && new Set(tiles.filter(isHonor)).size >= 7;
   const standard = standardWinWildUsage(tiles, openMeldCount, allowWild);
@@ -345,17 +350,19 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   if (!winningShape) return { ok: false, code: '', title: '', fan: 0, points: 0, fanItems: [], usesXiaoJiAsWild: false, basicOnly: false, selfDrawLike };
 
   const usesXiaoJiAsWild = (standard.ok && standard.wildcardsUsed > 0) || (sevenPairs.ok && sevenPairs.wildcardsUsed > 0);
+  const winTile = tile ?? (state.lastDraw?.playerIndex === playerIndex ? state.lastDraw.tile : undefined);
+  const longBei = sevenPairs.ok && winTile !== undefined && sevenPairs.quadTiles.length >= 2 && sevenPairs.quadTiles.includes(winTile);
 
   if (qixingLanPai) addFan(fanItems, 'SEVEN_STAR_LAN_PAI', '七星烂牌', 2, '烂牌且有 7 种不同字牌');
   else if (lanPai) addFan(fanItems, 'LAN_PAI', '烂牌', 1, '烂牌只能叠加无鸡');
-  else if (sevenPairs.ok) addFan(fanItems, sevenPairs.hasQuadPair ? 'SEVEN_PAIRS_LONG_BEI' : 'SEVEN_PAIRS', sevenPairs.hasQuadPair ? '小七对龙背' : '小七对', sevenPairs.hasQuadPair ? 3 : 2);
+  else if (sevenPairs.ok) addFan(fanItems, longBei ? 'SEVEN_PAIRS_LONG_BEI' : 'SEVEN_PAIRS', longBei ? '小七对龙背' : '小七对', longBei ? 3 : 2);
   else addFan(fanItems, 'BASIC_WIN', '底和', 0);
 
   if (lanPai) {
     if (hasNoXiaoJiAsWild(player, usesXiaoJiAsWild)) addFan(fanItems, 'NO_XIAO_JI', '无鸡', 1);
   } else {
     if (hasNoXiaoJiAsWild(player, usesXiaoJiAsWild)) addFan(fanItems, 'NO_XIAO_JI', '无鸡', 1);
-    if (source === 'SELF_DRAW' && isMenQing(player)) addFan(fanItems, 'MEN_QING_SELF_DRAW', '门清自摸', 1);
+    if (standard.ok && source === 'SELF_DRAW' && isMenQing(player)) addFan(fanItems, 'MEN_QING_SELF_DRAW', '门清自摸', 1);
     if (state.lastDraw?.playerIndex === playerIndex && state.lastDraw.source === 'PUBLIC_KONG' && source === 'SELF_DRAW') {
       const lastTile = state.lastDraw.tile;
       if (lastTile === 13) addFan(fanItems, 'FIVE_MEI_HUA', '五梅花', 2, '杠后摸公开杠牌 5 饼并以此牌和牌');
@@ -382,7 +389,8 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   const nonBasicItems = fanItems.filter((item) => !['BASIC_WIN'].includes(item.code));
   const startingFanItems = fanItems.filter((item) => !['BASIC_WIN', 'NO_XIAO_JI'].includes(item.code));
   const basicOnly = nonBasicItems.length === 0;
-  if (source === 'DISCARD' && (basicOnly || (usesXiaoJiAsWild && startingFanItems.length === 0))) {
+  const quanQiuXiaoJiAsWild = usesXiaoJiAsWild && player.hand.length === 1 && player.hand[0] === XIAO_JI;
+  if (source === 'DISCARD' && (basicOnly || (usesXiaoJiAsWild && startingFanItems.length === 0) || quanQiuXiaoJiAsWild)) {
     return { ok: false, code: '', title: '', fan: 0, points: 0, fanItems: [], usesXiaoJiAsWild, basicOnly: true, selfDrawLike };
   }
 
@@ -393,7 +401,7 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     code: fanItems[0]?.code ?? 'BASIC_WIN',
     title: fanItems.map((item) => item.name).join('+') || '底和',
     fan,
-    points: source === 'ROB_KONG' ? Math.max(3, 2 ** fan) : 2 ** fan,
+    points: 2 ** fan,
     fanItems: fanItems.map((item) => ({ ...item, points: item.code === 'ROB_KONG' ? 3 : 2 ** item.fan })),
     usesXiaoJiAsWild,
     basicOnly,
@@ -427,6 +435,9 @@ function buildSelfActions(state: GameState, playerIndex: number): GameAction[] {
   const actions: GameAction[] = sortedUnique(player.hand).map((tile) => ({ type: 'DISCARD', tile, actionId: tile }));
   if (canWinInState(state, playerIndex, undefined, 'SELF_DRAW').ok) actions.push({ type: 'WIN', actionId: encodeAction({ type: 'WIN' }) });
 
+  const handError = state.handErrors?.[playerIndex] ?? 0;
+  if (handError !== 0) return actions;
+
   const counts = countTiles(player.hand);
   const allowWild = state.xiaoJiActiveAsWild !== false;
   for (let tile = 0; tile < TILE_TYPE_COUNT; tile += 1) {
@@ -451,18 +462,25 @@ function responseActions(state: GameState, playerIndex: number, discard: { tile:
   const counts = countTiles(player.hand);
   const allowWild = state.xiaoJiActiveAsWild !== false;
   const actions: GameAction[] = [];
+  const handError = state.handErrors?.[playerIndex] ?? 0;
+  const furiten = state.furiten?.[playerIndex];
+  const sameTurnFuriten = furiten !== undefined && furiten.passedWinTiles.includes(tile);
+  const xiaoJiRefusal = furiten?.refusedXiaoJiWin === true;
 
-  if (canWinInState(state, playerIndex, tile, 'DISCARD').ok) actions.push({ type: 'WIN', tile, actionId: encodeAction({ type: 'WIN' }) });
-  if (counts[tile] >= 2) actions.push({ type: 'PONG', tile, actionId: encodeAction({ type: 'PONG' }) });
-  if (counts[tile] >= 3 || (allowWild && tile !== XIAO_JI && counts[tile] >= 2 && counts[XIAO_JI] >= 1)) {
-    actions.push({ type: 'KONG_EXPOSED', tile, actionId: encodeAction({ type: 'KONG_EXPOSED' }) });
-  }
+  if (!sameTurnFuriten && !xiaoJiRefusal && canWinInState(state, playerIndex, tile, 'DISCARD').ok) actions.push({ type: 'WIN', tile, actionId: encodeAction({ type: 'WIN' }) });
 
-  const nextPlayer = (discard.fromPlayer + 1) % state.players.length;
-  if (playerIndex === nextPlayer && tile !== XIAO_JI && isSuited(tile)) {
-    for (const type of ['CHOW_LEFT', 'CHOW_MIDDLE', 'CHOW_RIGHT'] as const) {
-      const need = chowTiles(tile, type);
-      if (need && need.every((item) => counts[item] > 0)) actions.push({ type, tile, actionId: encodeAction({ type }) });
+  if (handError === 0) {
+    if (counts[tile] >= 2 && !furiten?.passedPongTiles.includes(tile)) actions.push({ type: 'PONG', tile, actionId: encodeAction({ type: 'PONG' }) });
+    if (counts[tile] >= 3 || (allowWild && tile !== XIAO_JI && counts[tile] >= 2 && counts[XIAO_JI] >= 1)) {
+      actions.push({ type: 'KONG_EXPOSED', tile, actionId: encodeAction({ type: 'KONG_EXPOSED' }) });
+    }
+
+    const nextPlayer = (discard.fromPlayer + 1) % state.players.length;
+    if (playerIndex === nextPlayer && tile !== XIAO_JI && isSuited(tile)) {
+      for (const type of ['CHOW_LEFT', 'CHOW_MIDDLE', 'CHOW_RIGHT'] as const) {
+        const need = chowTiles(tile, type);
+        if (need && need.every((item) => counts[item] > 0)) actions.push({ type, tile, actionId: encodeAction({ type }) });
+      }
     }
   }
 
@@ -478,6 +496,16 @@ function priorityFor(action: GameAction) {
 }
 
 function drawForPlayer(state: GameState, playerIndex: number, events: GameEvent[]) {
+  if (state.furiten) {
+    state.furiten[playerIndex] = { passedWinTiles: [], refusedXiaoJiWin: false, passedPongTiles: [] };
+  }
+  const handError = state.handErrors?.[playerIndex] ?? 0;
+  if (handError > 0) {
+    // 多牌 (相公): skip drawing; the player only discards until corrected.
+    state.currentPlayer = playerIndex;
+    state.status = 'PLAYING';
+    return undefined;
+  }
   if (state.wall.length <= drawWallThreshold(state)) return finishDraw(state, events);
   const drawn = state.wall.shift();
   if (drawn === undefined) return finishDraw(state, events);
@@ -486,6 +514,11 @@ function drawForPlayer(state: GameState, playerIndex: number, events: GameEvent[
   state.currentPlayer = playerIndex;
   state.status = 'PLAYING';
   events.push({ type: 'TILE_DRAWN', playerIndex });
+  if (handError < 0) {
+    // 少牌 (相公): only draw, no discard, until the hand count is corrected.
+    if (state.handErrors) state.handErrors[playerIndex] = handError + 1;
+    return drawForPlayer(state, (playerIndex + 1) % state.players.length, events);
+  }
   return undefined;
 }
 
@@ -498,7 +531,8 @@ function finishDraw(state: GameState, events: GameEvent[]) {
 }
 
 function beginKongTileSelection(state: GameState, playerIndex: number, kind: Meld['type'], events: GameEvent[]) {
-  if ((state.publicKongTiles?.length ?? 0) <= 1) return takePublicKongTile(state, playerIndex, state.publicKongTiles?.[0], events);
+  const visible = (state.publicKongSlots ?? []).map((slot) => slot.visible);
+  if (visible.length <= 1) return takePublicKongTile(state, playerIndex, visible[0], events);
   state.pendingKongSelection = { playerIndex, kind };
   state.currentPlayer = playerIndex;
   state.status = 'PLAYING';
@@ -506,18 +540,25 @@ function beginKongTileSelection(state: GameState, playerIndex: number, kind: Mel
 }
 
 function takePublicKongTile(state: GameState, playerIndex: number, selectedTile: number | undefined, events: GameEvent[]) {
-  const publicTiles = state.publicKongTiles ?? [];
-  const selectedIndex = selectedTile === undefined ? 0 : publicTiles.findIndex((tile) => tile === selectedTile);
-  const replacement = selectedIndex >= 0 ? publicTiles[selectedIndex] : publicTiles.shift() ?? state.wall.pop();
-  if (selectedIndex >= 0) publicTiles.splice(selectedIndex, 1);
+  const slots = state.publicKongSlots ?? [];
+  const selectedIndex = selectedTile === undefined ? 0 : slots.findIndex((slot) => slot.visible === selectedTile);
+  const selected = selectedIndex >= 0 ? slots.splice(selectedIndex, 1)[0] : slots.shift();
+  const replacement = selected?.visible;
   if (replacement !== undefined) {
     state.players[playerIndex].hand.push(replacement);
     state.lastDraw = { playerIndex, tile: replacement, source: 'PUBLIC_KONG', stepIndex: state.stepIndex };
     events.push({ type: 'TILE_DRAWN', playerIndex });
   }
-  const supplement = state.wall.pop();
-  if (supplement !== undefined) publicTiles.push(supplement);
-  state.publicKongTiles = publicTiles.slice(0, 2);
+  // 补翻: prefer the hidden tile below the taken stack; otherwise reveal the top
+  // tile of the newest stack at the wall end (its bottom becomes the new hidden).
+  if (selected?.hidden !== undefined) {
+    slots.push({ visible: selected.hidden });
+  } else {
+    const top = state.wall.pop();
+    const bottom = state.wall.pop();
+    if (top !== undefined) slots.push({ visible: top, hidden: bottom });
+  }
+  state.publicKongSlots = slots.slice(0, 2);
   state.pendingKongSelection = undefined;
   if (state.wall.length <= drawWallThreshold(state)) return finishDraw(state, events);
   return undefined;
@@ -537,6 +578,7 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
     };
   }
 
+  const isRobKong = sourceOverride === 'ROB_KONG';
   const scoreDelta = [0, 0, 0, 0];
   const fanItems = winners.map((winner) => {
     const win = analyzeWin(state, winner, winningTile, sourceOverride ?? (selfDraw ? 'SELF_DRAW' : 'DISCARD'));
@@ -545,7 +587,19 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
 
   for (const item of fanItems) {
     const points = item.points;
-    if (selfDraw) {
+    const bao = state.baoPai?.find((entry) => entry.protectedPlayer === item.winner);
+    if (bao) {
+      // 包牌: the payer (who discarded the completing tile) pays the whole settlement.
+      const total = (selfDraw || isRobKong) ? points * 3 : points;
+      scoreDelta[bao.payer] -= total;
+      scoreDelta[item.winner] += total;
+    } else if (isRobKong) {
+      // 抢杠: treated as self-draw, but the kong adder pays all the points.
+      if (loser !== undefined) {
+        scoreDelta[loser] -= points * 3;
+        scoreDelta[item.winner] += points * 3;
+      }
+    } else if (selfDraw) {
       for (let i = 0; i < state.players.length; i += 1) {
         if (i === item.winner) continue;
         scoreDelta[i] -= points;
@@ -561,18 +615,18 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
   state.totalScores = [...state.scores];
   return {
     scores: [...state.scores],
-    reason: selfDraw ? 'self_draw_win' : 'discard_win',
+    reason: isRobKong ? 'rob_kong_win' : selfDraw ? 'self_draw_win' : 'discard_win',
     winnerIndexes: winners,
-    loserIndexes: selfDraw ? state.players.map((_, index) => index).filter((index) => !winners.includes(index)) : loser !== undefined ? [loser] : [],
+    loserIndexes: isRobKong && loser !== undefined ? [loser] : selfDraw ? state.players.map((_, index) => index).filter((index) => !winners.includes(index)) : loser !== undefined ? [loser] : [],
     dealer: state.dealer,
-    isSelfDraw: selfDraw,
+    isSelfDraw: selfDraw || isRobKong,
     isDraw: false,
     baseScore: 1,
     cappedFan: Math.max(...fanItems.map((item) => item.fan), 0),
     fanItems: fanItems.flatMap((item) => item.fanItems),
     scoreDelta,
-    title: selfDraw ? '自摸胡牌' : '点炮胡牌',
-    description: '基础飞小鸡规则结算。'
+    title: isRobKong ? '抢杠和牌' : selfDraw ? '自摸胡牌' : '点炮胡牌',
+    description: isRobKong ? '抢杠：由加杠者支付所有分数。' : '基础飞小鸡规则结算。'
   };
 }
 
@@ -618,6 +672,69 @@ function recordDiscardRun(state: GameState, playerIndex: number, tile: number) {
   if (tile === XIAO_JI) run.containsXiaoJiDiscard = true;
 }
 
+function resetFirstRoundOnMeld(state: GameState) {
+  const round = state.firstRound;
+  if (round) round.broken = true;
+}
+
+function recordFirstRoundDiscard(state: GameState, tile: number) {
+  const round = state.firstRound;
+  if (!round || round.broken) return;
+  if (round.count === 0) {
+    if (isWind(tile)) {
+      round.tile = tile;
+      round.count = 1;
+    } else {
+      round.broken = true;
+    }
+  } else if (tile === round.tile) {
+    round.count += 1;
+  } else {
+    round.broken = true;
+  }
+}
+
+function recordFuritenRefusals(state: GameState, playerIndex: number, discard: { tile: number }, actionType: GameAction['type']) {
+  const pending = state.pendingResponses?.find((item) => item.playerIndex === playerIndex);
+  if (!pending) return;
+  const furiten = state.furiten?.[playerIndex];
+  if (!furiten) return;
+  if (pending.availableActions.some((item) => item.type === 'WIN') && actionType !== 'WIN') {
+    if (!furiten.passedWinTiles.includes(discard.tile)) furiten.passedWinTiles.push(discard.tile);
+  }
+  if (
+    pending.availableActions.some((item) => item.type === 'PONG') &&
+    actionType !== 'PONG' &&
+    actionType !== 'KONG_EXPOSED'
+  ) {
+    if (!furiten.passedPongTiles.includes(discard.tile)) furiten.passedPongTiles.push(discard.tile);
+  }
+}
+
+function recordBaoPai(state: GameState, discarder: number, tile: number) {
+  const exposedMelds = (player: PlayerState) =>
+    player.melds.filter((meld) => meld.type === 'PONG' || meld.type === 'KONG_EXPOSED' || meld.type === 'KONG_ADDED');
+  for (const player of state.players) {
+    if (player.seatIndex === discarder) continue;
+    const triplets = exposedMelds(player)
+      .map(meldTripletTile)
+      .filter((item): item is number => item !== undefined);
+    const dragonTypes = new Set(triplets.filter(isDragon));
+    const windTypes = new Set(triplets.filter(isWind));
+    const counts = countTiles(player.hand);
+    const canUse = counts[tile] >= 2 || canWinInState(state, player.seatIndex, tile, 'DISCARD').ok;
+    if (!canUse) continue;
+    // 大三元包牌: two exposed dragon melds + the discarded third dragon type.
+    if (isDragon(tile) && dragonTypes.size >= 2 && !dragonTypes.has(tile)) {
+      state.baoPai?.push({ protectedPlayer: player.seatIndex, payer: discarder, kind: 'BIG_THREE_DRAGONS' });
+    }
+    // 大四喜包牌: three exposed wind melds + the discarded fourth wind type.
+    if (isWind(tile) && windTypes.size >= 3 && !windTypes.has(tile)) {
+      state.baoPai?.push({ protectedPlayer: player.seatIndex, payer: discarder, kind: 'BIG_FOUR_WINDS' });
+    }
+  }
+}
+
 function normalizeDealer(dealer: number | undefined) {
   if (dealer === undefined || !Number.isInteger(dealer) || dealer < 0 || dealer >= DEFAULT_PLAYER_COUNT) return 0;
   return dealer;
@@ -626,15 +743,16 @@ function normalizeDealer(dealer: number | undefined) {
 export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
   createInitialState(input: CreateGameInput): GameState {
     if (input.players.length !== DEFAULT_PLAYER_COUNT) throw new AppError('RULE_ENGINE_ERROR', 'Qujing Fei Xiao Ji requires exactly 4 players.');
-    const wall = shuffleWall(input.seed);
-    const publicKongTiles = [wall.pop(), wall.pop()].filter((tile): tile is number => tile !== undefined);
-    const players = input.players.map((player) => ({ ...player, hand: [] as number[], melds: [], discards: [], status: 'ACTIVE' as const, isReady: true }));
-
-    for (let round = 0; round < INITIAL_HAND_SIZE; round += 1) {
-      for (const player of players) player.hand.push(wall.shift()!);
-    }
     const dealer = normalizeDealer(input.dealer);
-    players[dealer].hand.push(wall.shift()!);
+    const deal = dealInitialHands(input.seed, shuffleWall(input.seed), dealer);
+    const players = input.players.map((player, index) => ({
+      ...player,
+      hand: deal.hands[index],
+      melds: [],
+      discards: [],
+      status: 'ACTIVE' as const,
+      isReady: true
+    }));
 
     const ts = nowMs();
     return {
@@ -644,11 +762,16 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       seed: input.seed,
       status: 'PLAYING',
       players,
-      wall,
-      publicKongTiles,
+      wall: deal.wall,
+      dice: deal.dice,
+      publicKongSlots: deal.publicKongSlots,
       xiaoJiActiveAsWild: true,
       kongCount: 0,
       specialRuns: players.map(() => ({ honorDiscards: 0, yaojiuDiscards: 0, containsXiaoJiDiscard: false, brokenByMeld: false })),
+      furiten: players.map(() => ({ passedWinTiles: [], refusedXiaoJiWin: false, passedPongTiles: [] })),
+      firstRound: { count: 0, broken: false },
+      baoPai: [],
+      handErrors: [0, 0, 0, 0],
       currentPlayer: dealer,
       dealer,
       roundIndex: Math.max(0, (input.currentRound ?? 1) - 1),
@@ -665,11 +788,9 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
   getLegalActions(state: GameState, playerIndex: number): GameAction[] {
     if (state.pendingKongSelection) {
       if (state.pendingKongSelection.playerIndex !== playerIndex) return [];
-      return (state.publicKongTiles ?? []).slice(0, 2).map((tile) => ({
-        type: 'SELECT_KONG_TILE',
-        tile,
-        actionId: encodeAction({ type: 'SELECT_KONG_TILE' })
-      }));
+      return (state.publicKongSlots ?? [])
+        .slice(0, 2)
+        .map((slot) => ({ type: 'SELECT_KONG_TILE' as const, tile: slot.visible, actionId: encodeAction({ type: 'SELECT_KONG_TILE' }) }));
     }
     if (state.status === 'WAITING_RESPONSE') {
       const pending = state.pendingResponses?.find((item) => item.playerIndex === playerIndex);
@@ -686,7 +807,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     const legal = this.getLegalActions(state, playerIndex);
     if (!legal.some((item) => sameAction(item, action))) throw new AppError('ILLEGAL_ACTION', 'Action is not legal in current state.');
 
-    const nextState = cloneState(state);
+    let nextState = cloneState(state);
     const events: GameEvent[] = [];
     let score: ScoreResult | undefined;
     const player = nextState.players[playerIndex];
@@ -695,7 +816,30 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       if (action.type !== 'SELECT_KONG_TILE' || action.tile === undefined) throw new AppError('ILLEGAL_ACTION', 'Kong tile selection is required.');
       score = takePublicKongTile(nextState, playerIndex, action.tile, events);
     } else if (nextState.status === 'WAITING_RESPONSE') {
-      if (action.type === 'PASS') {
+      if (nextState.pendingRobKong) {
+        const rob = nextState.pendingRobKong;
+        if (action.type === 'PASS') {
+          removeResponse(nextState, playerIndex);
+          if ((nextState.pendingResponses ?? []).length === 0) {
+            nextState.pendingRobKong = undefined;
+            this.applySelfKong(nextState, rob.fromPlayer, { type: 'KONG_ADDED', tile: rob.tile, actionId: encodeAction({ type: 'KONG_ADDED' }) }, events);
+            score = beginKongTileSelection(nextState, rob.fromPlayer, 'KONG_ADDED', events);
+            nextState.pendingResponses = [];
+          }
+        } else if (action.type === 'WIN') {
+          const winners = (nextState.pendingResponses ?? [])
+            .filter((pending) => pending.availableActions.some((item) => item.type === 'WIN'))
+            .map((pending) => pending.playerIndex);
+          score = scoreResult(nextState, winners, rob.fromPlayer, false, false, rob.tile, 'ROB_KONG');
+          nextState.status = 'FINISHED';
+          nextState.result = score;
+          events.push(...winners.map((winner) => ({ type: 'WIN_DECLARED' as const, playerIndex: winner })));
+          events.push({ type: 'SCORE_SETTLED', result: score });
+        } else {
+          throw new AppError('ILLEGAL_ACTION', 'Only win or pass is allowed while a kong can be robbed.');
+        }
+      } else if (action.type === 'PASS') {
+        if (nextState.lastDiscard) recordFuritenRefusals(nextState, playerIndex, nextState.lastDiscard, action.type);
         removeResponse(nextState, playerIndex);
         if ((nextState.pendingResponses ?? []).length === 0 && nextState.lastDiscard) {
           score = drawForPlayer(nextState, (nextState.lastDiscard.fromPlayer + 1) % nextState.players.length, events);
@@ -718,6 +862,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
         if (playerHighest < highest || !pending?.availableActions.some((item) => sameAction(item, action))) {
           throw new AppError('ILLEGAL_ACTION', 'Higher priority response is still available.');
         }
+        recordFuritenRefusals(nextState, playerIndex, discard, action.type);
         this.applyMeldResponse(nextState, playerIndex, action, discard, events);
       }
     } else if (action.type === 'WIN') {
@@ -727,25 +872,134 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       events.push({ type: 'WIN_DECLARED', playerIndex });
       events.push({ type: 'SCORE_SETTLED', result: score });
     } else if (action.type === 'DISCARD' && action.tile !== undefined) {
+      const hadSelfDrawWin = action.tile === XIAO_JI && canWinInState(nextState, playerIndex, undefined, 'SELF_DRAW').ok;
       const hand = removeTiles(player.hand, [action.tile]);
       if (!hand) throw new AppError('ILLEGAL_ACTION', 'Tile is not in player hand.');
       player.hand = hand;
+      if ((nextState.handErrors?.[playerIndex] ?? 0) > 0 && nextState.handErrors) nextState.handErrors[playerIndex] -= 1;
       player.discards.push(action.tile);
       recordDiscardRun(nextState, playerIndex, action.tile);
-      if (action.tile === XIAO_JI) nextState.xiaoJiActiveAsWild = false;
+      if (action.tile === XIAO_JI) {
+        // 小鸡拒和振听: discarding xiaoji while holding a self-draw win blocks discard wins.
+        if (hadSelfDrawWin) {
+          const furiten = nextState.furiten?.[playerIndex];
+          if (furiten) furiten.refusedXiaoJiWin = true;
+        }
+        nextState.xiaoJiActiveAsWild = false;
+      }
       nextState.lastDiscard = { tile: action.tile, fromPlayer: playerIndex, stepIndex: nextState.stepIndex };
       nextState.afterKongDiscardFrom = nextState.lastKong?.playerIndex === playerIndex ? playerIndex : undefined;
       events.push({ type: 'TILE_DISCARDED', playerIndex, tile: action.tile });
-      score = beginResponses(nextState, nextState.lastDiscard, events);
-    } else if (['KONG_CONCEALED', 'KONG_ADDED'].includes(action.type) && action.tile !== undefined) {
+      const run = nextState.specialRuns?.[playerIndex];
+      if (run && !run.brokenByMeld && (run.honorDiscards >= 10 || run.yaojiuDiscards >= 13)) {
+        // 十风 / 十三幺: consecutive discard runs end the round immediately.
+        score = scoreResult(nextState, [playerIndex], undefined, true, false, undefined, 'SELF_DRAW');
+        nextState.status = 'FINISHED';
+        nextState.result = score;
+        events.push({ type: 'WIN_DECLARED', playerIndex });
+        events.push({ type: 'SCORE_SETTLED', result: score });
+      } else {
+        recordFirstRoundDiscard(nextState, action.tile);
+        if (nextState.firstRound?.count === 4) {
+          const abort = this.applyFourWindsAbort(nextState, events);
+          nextState = abort.nextState;
+          score = abort.result;
+        } else {
+          recordBaoPai(nextState, playerIndex, action.tile);
+          score = beginResponses(nextState, nextState.lastDiscard, events);
+        }
+      }
+    } else if (action.type === 'KONG_ADDED' && action.tile !== undefined) {
+      score = this.applyAddedKong(nextState, playerIndex, action, events);
+    } else if (action.type === 'KONG_CONCEALED' && action.tile !== undefined) {
       this.applySelfKong(nextState, playerIndex, action, events);
-      score = beginKongTileSelection(nextState, playerIndex, action.type as 'KONG_CONCEALED' | 'KONG_ADDED', events);
+      score = beginKongTileSelection(nextState, playerIndex, 'KONG_CONCEALED', events);
     }
 
     nextState.lastAction = action;
     nextState.stepIndex += 1;
     nextState.updatedAt = nowMs();
     return { nextState, events, scoreResult: score };
+  }
+
+  /**
+   * 四风连打 (4.3): all four players discard the same wind in the first round.
+   * The dealer pays 1 point to each other player, then the round is re-dealt.
+   */
+  private applyFourWindsAbort(state: GameState, events: GameEvent[]) {
+    const delta = [0, 0, 0, 0];
+    for (let i = 0; i < state.players.length; i += 1) {
+      if (i === state.dealer) continue;
+      delta[i] += 1;
+      delta[state.dealer] -= 1;
+    }
+    const scores = state.scores.map((score, index) => score + delta[index]);
+    const result: ScoreResult = {
+      scores: [...scores],
+      reason: 'four_winds_abort',
+      isDraw: true,
+      winnerIndexes: [],
+      loserIndexes: [state.dealer],
+      scoreDelta: delta,
+      title: '四风连打',
+      description: '第一巡四名玩家均打出同一风牌：庄家向每家支付 1 分后流局重打。'
+    };
+    events.push({ type: 'SCORE_SETTLED', result });
+    events.push({ type: 'ROUND_REDEALT' });
+
+    const fresh = this.createInitialState({
+      roomId: state.roomId,
+      gameId: state.gameId,
+      ruleVersion: state.ruleVersion,
+      seed: `${state.seed}#fw:${state.stepIndex}`,
+      currentRound: state.currentRound ?? 1,
+      maxRounds: state.maxRounds ?? 1,
+      totalScores: [...scores],
+      dealer: state.dealer,
+      players: state.players.map((player) => ({
+        seatIndex: player.seatIndex,
+        userId: player.userId,
+        isAI: player.isAI,
+        aiModel: player.aiModel
+      }))
+    });
+    fresh.scores = [...scores];
+    fresh.totalScores = [...scores];
+    return { nextState: fresh, result };
+  }
+
+  /**
+   * Added kong (加杠) with the 抢杠 check: other players who can win on the added
+   * tile may rob it (treated as self-draw, paid entirely by the kong adder).
+   */
+  private applyAddedKong(state: GameState, playerIndex: number, action: GameAction, events: GameEvent[]): ScoreResult | undefined {
+    const tile = action.tile!;
+    const player = state.players[playerIndex];
+    const meld = player.melds.find((item) => item.type === 'PONG' && item.tiles[0] === tile);
+    if (!meld) throw new AppError('ILLEGAL_ACTION', 'No pong meld to upgrade.');
+
+    const robbers: number[] = [];
+    for (const other of state.players) {
+      if (other.seatIndex === playerIndex) continue;
+      const furiten = state.furiten?.[other.seatIndex];
+      const furitenBlocked = furiten !== undefined && (furiten.passedWinTiles.includes(tile) || furiten.refusedXiaoJiWin);
+      if (!furitenBlocked && canWinInState(state, other.seatIndex, tile, 'ROB_KONG').ok) robbers.push(other.seatIndex);
+    }
+
+    if (robbers.length === 0) {
+      this.applySelfKong(state, playerIndex, action, events);
+      return beginKongTileSelection(state, playerIndex, 'KONG_ADDED', events);
+    }
+
+    state.status = 'WAITING_RESPONSE';
+    state.pendingRobKong = { tile, fromPlayer: playerIndex };
+    state.pendingResponses = robbers.map((robber) => ({
+      playerIndex: robber,
+      availableActions: [{ type: 'WIN', tile, actionId: encodeAction({ type: 'WIN' }) }],
+      priority: 4
+    }));
+    events.push({ type: 'WAITING_RESPONSE', responses: state.pendingResponses });
+    return undefined;
   }
 
   private applyMeldResponse(state: GameState, playerIndex: number, action: GameAction, discard: { tile: number; fromPlayer: number; stepIndex: number }, events: GameEvent[]) {
@@ -791,6 +1045,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     player.hand = hand;
     player.melds.push(meld);
     markMeldBreak(state, playerIndex);
+    resetFirstRoundOnMeld(state);
     if (action.type.startsWith('CHOW') && (discard.tile === XIAO_JI || used.includes(XIAO_JI))) state.xiaoJiActiveAsWild = false;
     state.status = 'PLAYING';
     state.currentPlayer = playerIndex;
@@ -817,6 +1072,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       meld.claimedIndex = meld.tiles.length - 1;
       meld.containsXiaoJiAsWild = meld.containsXiaoJiAsWild || !player.hand.includes(tile);
       state.kongCount = (state.kongCount ?? 0) + 1;
+      resetFirstRoundOnMeld(state);
       state.lastKong = { playerIndex, stepIndex: state.stepIndex, kind: 'KONG_ADDED' };
       events.push({ type: 'MELD_CREATED', playerIndex, meld });
       return;
@@ -832,6 +1088,50 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     state.kongCount = (state.kongCount ?? 0) + 1;
     state.lastKong = { playerIndex, stepIndex: state.stepIndex, kind: 'KONG_CONCEALED' };
     events.push({ type: 'MELD_CREATED', playerIndex, meld });
+  }
+
+  /**
+   * Verifies whether a declared win is valid for the given source and tile.
+   * Used for false-win (诈和) adjudication: the server rejects illegal WIN
+   * actions before they can mutate state.
+   */
+  verifyWin(state: GameState, playerIndex: number, tile?: number, source: WinSource = 'SELF_DRAW') {
+    return analyzeWin(state, playerIndex, tile, source);
+  }
+
+  /**
+   * 诈和 (5.2): settles a fixed 8-point penalty to each other player and ends
+   * the round. Normal action validation prevents illegal wins, so this path is
+   * only used for explicit false-win adjudication (e.g. a system/admin action).
+   */
+  settleFalseWin(state: GameState, playerIndex: number): RuleResult {
+    const nextState = cloneState(state);
+    const events: GameEvent[] = [];
+    const delta = [0, 0, 0, 0];
+    for (let i = 0; i < nextState.players.length; i += 1) {
+      if (i === playerIndex) continue;
+      delta[i] += 8;
+      delta[playerIndex] -= 8;
+    }
+    nextState.scores = nextState.scores.map((score, index) => score + delta[index]);
+    nextState.totalScores = [...nextState.scores];
+    const result: ScoreResult = {
+      scores: [...nextState.scores],
+      reason: 'false_win',
+      winnerIndexes: [],
+      loserIndexes: [playerIndex],
+      scoreDelta: delta,
+      title: '诈和',
+      description: '诈和者向其他三家各赔付 8 分，本局结束。'
+    };
+    nextState.status = 'FINISHED';
+    nextState.result = result;
+    nextState.lastAction = { type: 'WIN', actionId: encodeAction({ type: 'WIN' }) };
+    nextState.stepIndex += 1;
+    nextState.updatedAt = nowMs();
+    events.push({ type: 'WIN_DECLARED', playerIndex });
+    events.push({ type: 'SCORE_SETTLED', result });
+    return { nextState, events, scoreResult: result };
   }
 
   buildPlayerView(state: GameState, playerIndex: number) {

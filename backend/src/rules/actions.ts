@@ -86,5 +86,8 @@ export function normalizeClientAction(input: ClientAction): GameAction {
 }
 
 export function sameAction(a: GameAction, b: GameAction) {
+  // A WIN claim is identified by its type; the tile is implied by the discard
+  // or kong being responded to and may be omitted by clients.
+  if (a.type === 'WIN' && b.type === 'WIN') return true;
   return a.type === b.type && a.tile === b.tile;
 }

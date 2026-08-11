@@ -14,7 +14,10 @@ describe('predict state builder', () => {
     });
     state.players[0].discards = [31];
     state.players[1].melds = [{ type: 'PONG', tiles: [3, 3, 3], fromPlayer: 0, stepIndex: 1 }];
-    state.publicKongTiles = [3, 12];
+    state.publicKongSlots = [
+      { visible: 3, hidden: 5 },
+      { visible: 12, hidden: 6 }
+    ];
     state.xiaoJiActiveAsWild = false;
 
     const payload = buildPredictState(state, 0);

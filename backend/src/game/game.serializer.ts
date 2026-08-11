@@ -45,7 +45,7 @@ export function buildPlayerGameView(
     currentRound: state.currentRound ?? state.roundIndex + 1,
     maxRounds: state.maxRounds ?? 1,
     isFinalRound: (state.currentRound ?? state.roundIndex + 1) >= (state.maxRounds ?? 1),
-    publicKongTiles: [...(state.publicKongTiles ?? [])],
+    publicKongTiles: (state.publicKongSlots ?? []).map((slot) => slot.visible),
     xiaoJiActiveAsWild: state.xiaoJiActiveAsWild ?? true,
     result: state.result ?? null,
     wallCount: state.wall.length,

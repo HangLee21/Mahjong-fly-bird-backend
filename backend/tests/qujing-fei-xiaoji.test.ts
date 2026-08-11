@@ -99,4 +99,23 @@ describe('QujingFeiXiaoJiRuleEngine', () => {
     const afterDiscard = engine.applyAction(s, 0, { type: 'DISCARD', tile: 27, actionId: 27 }).nextState;
     expect(engine.getLegalActions(afterDiscard, 1).some((action) => action.type === 'WIN')).toBe(true);
   });
+
+  it('added kong using xiaoji as wild shows three identical tiles plus the chick', () => {
+    const engine = new QujingFeiXiaoJiRuleEngine();
+    const s = state();
+    s.players[0].hand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    s.players[1].hand = [18, 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12];
+    s.players[1].melds = [{ type: 'PONG', tiles: [5, 5, 5], fromPlayer: 0, stepIndex: 1, claimedIndex: 1 }];
+    s.players[2].hand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    s.players[3].hand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    s.currentPlayer = 1;
+    s.status = 'PLAYING';
+
+    expect(engine.getLegalActions(s, 1).some((action) => action.type === 'KONG_ADDED' && action.tile === 5)).toBe(true);
+    const after = engine.applyAction(s, 1, { type: 'KONG_ADDED', tile: 5, actionId: 1 }).nextState;
+    const meld = after.players[1].melds.find((item) => item.type === 'KONG_ADDED');
+    expect(meld?.tiles).toEqual([5, 5, 5, 18]);
+    expect(meld?.containsXiaoJiAsWild).toBe(true);
+    expect(after.players[1].hand.includes(18)).toBe(false);
+  });
 });

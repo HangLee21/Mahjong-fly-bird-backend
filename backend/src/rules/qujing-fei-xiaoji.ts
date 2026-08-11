@@ -1064,13 +1064,14 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     if (action.type === 'KONG_ADDED') {
       const meld = player.melds.find((item) => item.type === 'PONG' && item.tiles[0] === tile);
       if (!meld) throw new AppError('ILLEGAL_ACTION', 'No pong meld to upgrade.');
-      const hand = removeTiles(player.hand, player.hand.includes(tile) || state.xiaoJiActiveAsWild === false ? [tile] : [XIAO_JI]);
+      const usesWild = !player.hand.includes(tile) && state.xiaoJiActiveAsWild !== false;
+      const hand = removeTiles(player.hand, usesWild ? [XIAO_JI] : [tile]);
       if (!hand) throw new AppError('ILLEGAL_ACTION', 'Missing tile for added kong.');
       player.hand = hand;
       meld.type = 'KONG_ADDED';
-      meld.tiles.push(tile);
+      meld.tiles.push(usesWild ? XIAO_JI : tile);
       meld.claimedIndex = meld.tiles.length - 1;
-      meld.containsXiaoJiAsWild = meld.containsXiaoJiAsWild || !player.hand.includes(tile);
+      meld.containsXiaoJiAsWild = meld.containsXiaoJiAsWild || usesWild;
       state.kongCount = (state.kongCount ?? 0) + 1;
       resetFirstRoundOnMeld(state);
       state.lastKong = { playerIndex, stepIndex: state.stepIndex, kind: 'KONG_ADDED' };
@@ -1079,7 +1080,9 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
     }
 
     const counts = countTiles(player.hand);
-    const used = counts[tile] >= 4 || state.xiaoJiActiveAsWild === false ? [tile, tile, tile, tile] : [tile, ...Array.from({ length: 4 - counts[tile] }, () => XIAO_JI), ...Array.from({ length: Math.max(0, counts[tile] - 1) }, () => tile)].slice(0, 4);
+    const used = counts[tile] >= 4 || state.xiaoJiActiveAsWild === false
+      ? [tile, tile, tile, tile]
+      : [tile, ...Array.from({ length: 4 - counts[tile] }, () => XIAO_JI), ...Array.from({ length: Math.max(0, counts[tile] - 1) }, () => tile)].slice(0, 4).sort((a, b) => a - b);
     const hand = removeTiles(player.hand, used);
     if (!hand) throw new AppError('ILLEGAL_ACTION', 'Missing tiles for concealed kong.');
     const meld: Meld = { type: 'KONG_CONCEALED', tiles: used, stepIndex: state.stepIndex, containsXiaoJiAsWild: used.includes(XIAO_JI) && tile !== XIAO_JI };

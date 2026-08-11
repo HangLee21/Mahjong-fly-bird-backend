@@ -475,3 +475,85 @@ describe('流局阈值', () => {
     expect(result.scoreResult?.isDraw).toBe(true);
   });
 });
+
+describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
+  it('allows passing a kong response, keeps tiles in hand, and offers concealed kong on a later turn', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].hand = [5, 27, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 30];
+    s.players[1].hand = [5, 5, 18, 18, 0, 1, 2, 6, 7, 8, 10, 11, 12];
+    s.players[2].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+
+    const afterDiscard = eng.applyAction(s, 0, { type: 'DISCARD', tile: 5, actionId: 5 }).nextState;
+    const responseActions = eng.getLegalActions(afterDiscard, 1);
+    expect(responseActions.some((action) => action.type === 'PONG')).toBe(true);
+    expect(responseActions.some((action) => action.type === 'KONG_EXPOSED')).toBe(true);
+    expect(responseActions.some((action) => action.type === 'PASS')).toBe(true);
+
+    const afterPass = eng.applyAction(afterDiscard, 1, { type: 'PASS', actionId: 100 }).nextState;
+    // Passing keeps every tile in hand; the next player simply draws on their own turn.
+    for (const tile of [5, 5, 18, 18, 0, 1, 2, 6, 7, 8, 10, 11, 12]) {
+      expect(afterPass.players[1].hand).toContain(tile);
+    }
+    expect(afterPass.players[1].hand).toHaveLength(14);
+    expect(afterPass.players[1].melds).toHaveLength(0);
+
+    // Simulate many later rounds: on the player's own turn the concealed kong is still available.
+    const ownTurn = state({ ...afterPass, currentPlayer: 1, status: 'PLAYING', lastDiscard: undefined, pendingResponses: [] });
+    ownTurn.players[1].hand = [5, 5, 18, 18, 0, 1, 2, 6, 7, 8, 10, 11, 12, 12];
+    expect(eng.getLegalActions(ownTurn, 1).some((action) => action.type === 'KONG_CONCEALED' && action.tile === 5)).toBe(true);
+  });
+
+  it('concealed kong with two real tiles and two chicks takes a public kong tile and wins with 杠上花', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].hand = [27, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30];
+    s.players[1].hand = [5, 5, 18, 18, 0, 1, 2, 6, 7, 8, 10, 11, 12, 12];
+    s.players[2].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 1;
+    s.status = 'PLAYING';
+    s.publicKongSlots = [
+      { visible: 9, hidden: 8 },
+      { visible: 7, hidden: 6 }
+    ];
+
+    const afterKong = eng.applyAction(s, 1, { type: 'KONG_CONCEALED', tile: 5, actionId: 107 }).nextState;
+    const kongMeld = afterKong.players[1].melds.find((meld) => meld.type === 'KONG_CONCEALED');
+    expect(kongMeld?.tiles).toEqual([5, 5, 18, 18]);
+    expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
+    expect(afterKong.pendingKongSelection).toEqual({ playerIndex: 1, kind: 'KONG_CONCEALED' });
+    expect(eng.getLegalActions(afterKong, 1).map((action) => action.tile).sort()).toEqual([7, 9]);
+
+    const afterTake = eng.applyAction(afterKong, 1, { type: 'SELECT_KONG_TILE', tile: 9, actionId: 109 }).nextState;
+    expect(afterTake.players[1].hand).toContain(9);
+    expect(afterTake.lastDraw).toMatchObject({ playerIndex: 1, tile: 9, source: 'PUBLIC_KONG' });
+    expect(afterTake.pendingKongSelection).toBeUndefined();
+
+    const winActions = eng.getLegalActions(afterTake, 1).filter((action) => action.type === 'WIN');
+    expect(winActions).toHaveLength(1);
+    const result = eng.applyAction(afterTake, 1, { type: 'WIN', actionId: 101 });
+    expect(result.nextState.status).toBe('FINISHED');
+    expect(result.scoreResult?.fanItems?.some((item) => item.code === 'KONG_FLOWER')).toBe(true);
+  });
+
+  it('concealed kong with three real tiles and one chick stores three identical tiles plus the chick', () => {
+    const eng = engine();
+    const s = state();
+    s.players[1].hand = [5, 5, 5, 18, 0, 1, 2, 6, 7, 8, 10, 11, 12, 13];
+    s.players[0].hand = [27, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30];
+    s.players[2].hand = [20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33];
+    s.players[3].hand = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.currentPlayer = 1;
+    s.status = 'PLAYING';
+    s.publicKongSlots = [{ visible: 9, hidden: 8 }];
+
+    const afterKong = eng.applyAction(s, 1, { type: 'KONG_CONCEALED', tile: 5, actionId: 107 }).nextState;
+    const kongMeld = afterKong.players[1].melds.find((meld) => meld.type === 'KONG_CONCEALED');
+    expect(kongMeld?.tiles).toEqual([5, 5, 5, 18]);
+    expect(kongMeld?.containsXiaoJiAsWild).toBe(true);
+  });
+});

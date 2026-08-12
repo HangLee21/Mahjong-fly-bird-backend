@@ -655,6 +655,24 @@ describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
     expect(controlCodes).toContain('NO_XIAO_JI');
   });
 
+  it('prefers the no-wild decomposition so a real 1-2-3-bamboo chow scores 无鸡', () => {
+    const eng = engine();
+    const s = state();
+    // Mirrors a production round: the chick is a real 1-bamboo in the chow
+    // 1-2-3-bamboo (with 6-7-8-man, 1-2-3-dots, pong of 8-dots, pair of red
+    // dragon). A wild-using decomposition also exists, but 无鸡 must win.
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [16, 16, 16], stepIndex: 17, claimedIndex: 1, fromPlayer: 1 }
+    ];
+    s.players[0].hand = [5, 10, 20, 31, 11, 19, 9, 31, 7, 6, 18];
+
+    const win = eng.verifyWin(s, 0, undefined, 'SELF_DRAW');
+    expect(win.ok).toBe(true);
+    const codes = win.fanItems.map((item) => item.code);
+    expect(codes).toContain('NO_XIAO_JI');
+    expect(codes).toContain('BASIC_WIN');
+  });
+
   it('wins with double kong flower after two consecutive kongs on the same turn', () => {
     const eng = engine();
     const s = state();

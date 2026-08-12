@@ -256,11 +256,9 @@ function isThirteenYao(tiles: number[]) {
 
 function hasNoXiaoJiAsWild(player: PlayerState, usesXiaoJiAsWild: boolean) {
   if (usesXiaoJiAsWild) return false;
-  // 无鸡 means the hand has no chick anywhere: not used as a wild in the
-  // winning shape, not held in the hand, and not used in a kong meld
-  // (e.g. pong + chick exposed kong). A chick used as the 4th kong tile
-  // must still suppress the 无鸡 fan.
-  if (countTiles(player.hand)[XIAO_JI] > 0) return false;
+  // 无鸡 only cares whether the chick is used as a wild anywhere: in the
+  // winning shape (usesXiaoJiAsWild) or as the wild 4th tile of a kong meld.
+  // A chick held in the hand as a real 1-bamboo tile does not block 无鸡.
   return !player.melds.some(
     (meld) => meld.containsXiaoJiAsWild || meld.tiles.includes(XIAO_JI),
   );
@@ -361,7 +359,16 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   const winningShape = standard.ok || sevenPairs.ok || lanPai;
   if (!winningShape) return { ok: false, code: '', title: '', fan: 0, points: 0, fanItems: [], usesXiaoJiAsWild: false, basicOnly: false, selfDrawLike };
 
-  const usesXiaoJiAsWild = (standard.ok && standard.wildcardsUsed > 0) || (sevenPairs.ok && sevenPairs.wildcardsUsed > 0);
+  // When both a wild and a no-wild decomposition exist, prefer the no-wild one:
+  // it keeps the 无鸡 fan (higher multiplier). E.g. a real 1-2-3-bamboo chow
+  // containing the chick must not be re-interpreted as wild usage.
+  const standardNoWild = standardWinWildUsage(tiles, openMeldCount, false);
+  const sevenPairsNoWild = openMeldCount === 0
+    ? sevenPairsWildUsage(tiles, false)
+    : { ok: false, wildcardsUsed: 0, hasQuadPair: false, quadTiles: [] as number[] };
+  const hasNoWildWin = standardNoWild.ok || sevenPairsNoWild.ok || lanPai;
+  const usesXiaoJiAsWild = !hasNoWildWin
+    && ((standard.ok && standard.wildcardsUsed > 0) || (sevenPairs.ok && sevenPairs.wildcardsUsed > 0));
   const winTile = tile ?? (state.lastDraw?.playerIndex === playerIndex ? state.lastDraw.tile : undefined);
   const longBei = sevenPairs.ok && winTile !== undefined && sevenPairs.quadTiles.length >= 2 && sevenPairs.quadTiles.includes(winTile);
 

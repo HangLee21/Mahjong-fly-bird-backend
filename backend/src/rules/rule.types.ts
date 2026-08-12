@@ -42,6 +42,10 @@ export interface WinnerDetail {
   winner: number;
   /** 进张：自摸的摸牌 / 点炮的炮牌 / 抢杠的杠牌。 */
   tile?: number;
+  /** 胡牌时的全部手牌（含进张），按牌值升序。 */
+  hand: number[];
+  /** 胡牌时的副露。 */
+  melds: Array<{ type: string; tiles: number[] }>;
   /** 牌型标题，如 清一色+无鸡、四小鸡。 */
   title: string;
   source: WinSource;

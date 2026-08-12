@@ -686,15 +686,22 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
     baseScore: 1,
     cappedFan: Math.max(...fanItems.map((item) => item.fan), 0),
     fanItems: fanItems.flatMap((item) => item.fanItems),
-    winnerDetails: fanItems.map((item) => ({
-      winner: item.winner,
-      tile: winningTile ?? (selfDraw && state.lastDraw?.playerIndex === item.winner ? state.lastDraw.tile : undefined),
-      title: item.title,
-      source: sourceOverride ?? (selfDraw ? 'SELF_DRAW' : 'DISCARD'),
-      fan: item.fan,
-      points: item.points,
-      fanItems: item.fanItems
-    })),
+    winnerDetails: fanItems.map((item) => {
+      const winnerState = state.players[item.winner];
+      const winTile = winningTile ?? (selfDraw && state.lastDraw?.playerIndex === item.winner ? state.lastDraw.tile : undefined);
+      return {
+        winner: item.winner,
+        tile: winTile,
+        hand: [...winnerState.hand, ...(winTile !== undefined && !winnerState.hand.includes(winTile) ? [winTile] : [])]
+          .sort((a, b) => a - b),
+        melds: winnerState.melds.map((meld) => ({ type: meld.type, tiles: [...meld.tiles] })),
+        title: item.title,
+        source: sourceOverride ?? (selfDraw ? 'SELF_DRAW' : 'DISCARD'),
+        fan: item.fan,
+        points: item.points,
+        fanItems: item.fanItems
+      };
+    }),
     scoreDelta,
     title: isRobKong ? '抢杠和牌' : selfDraw ? '自摸胡牌' : '点炮胡牌',
     description: isRobKong ? '抢杠：由加杠者支付所有分数。' : '基础飞小鸡规则结算。'

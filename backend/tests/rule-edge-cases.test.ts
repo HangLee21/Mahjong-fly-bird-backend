@@ -135,10 +135,16 @@ describe('one-shot multi-win winner details', () => {
       { playerIndex: 1, availableActions: [{ type: 'WIN', tile: 15, actionId: 102 }], priority: 4 },
     ];
     const next = engine().applyAction(s, 0, { type: 'WIN', actionId: 101 }).nextState;
-    const result = next.result as { winnerIndexes: number[]; winnerDetails: Array<{ winner: number; tile?: number; source: string }> };
+    const result = next.result as {
+      winnerIndexes: number[];
+      winnerDetails: Array<{ winner: number; tile?: number; source: string; hand: number[]; melds: Array<{ type: string; tiles: number[] }> }>;
+    };
     expect(result.winnerIndexes.sort()).toEqual([0, 1]);
     expect(result.winnerDetails).toHaveLength(2);
     expect(result.winnerDetails.every((d) => d.tile === 15 && d.source === 'DISCARD')).toBe(true);
+    // 点炮胡：进张 15 应包含在手牌里
+    expect(result.winnerDetails[0].hand).toContain(15);
+    expect(Array.isArray(result.winnerDetails[0].melds)).toBe(true);
   });
 });
 

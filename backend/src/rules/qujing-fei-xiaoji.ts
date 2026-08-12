@@ -126,18 +126,32 @@ function canMakeSets(counts: number[], wildcards: number, setsNeeded: number): b
     if (canMakeSets(next, wildcards - tripletNeed, setsNeeded - 1)) return true;
   }
 
-  if (isSuited(first) && rank(first) <= 7) {
-    const a = first + 1;
-    const b = first + 2;
-    if (suit(first) === suit(a) && suit(first) === suit(b)) {
+  if (isSuited(first)) {
+    // 顺子以 first 开头：first, first+1, first+2，缺失位置用癞子补。
+    if (rank(first) <= 7) {
       const next = [...counts];
       next[first] -= 1;
       let need = 0;
-      for (const tile of [a, b]) {
+      for (const tile of [first + 1, first + 2]) {
         if (next[tile] > 0) next[tile] -= 1;
         else need += 1;
       }
       if (need <= wildcards && canMakeSets(next, wildcards - need, setsNeeded - 1)) return true;
+    }
+    // 顺子以 first-1 开头：癞子补 first-1（例如 8筒9筒+小鸡 = 789筒）。
+    if (rank(first) >= 2 && rank(first) <= 8) {
+      const next = [...counts];
+      next[first] -= 1;
+      let need = 1;
+      if (next[first + 1] > 0) next[first + 1] -= 1;
+      else need += 1;
+      if (need <= wildcards && canMakeSets(next, wildcards - need, setsNeeded - 1)) return true;
+    }
+    // 顺子以 first-2 开头：癞子补 first-2、first-1（例如 9筒+两只小鸡 = 789筒）。
+    if (rank(first) >= 3) {
+      const next = [...counts];
+      next[first] -= 1;
+      if (2 <= wildcards && canMakeSets(next, wildcards - 2, setsNeeded - 1)) return true;
     }
   }
 
@@ -641,7 +655,8 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
   }
 
   state.scores = state.scores.map((score, index) => score + scoreDelta[index]);
-  state.totalScores = [...state.scores];
+  // 总积分在上一局累计值上累加本局得失，不能覆盖成当局分数。
+  state.totalScores = (state.totalScores ?? [0, 0, 0, 0]).map((total, index) => total + scoreDelta[index]);
   return {
     scores: [...state.scores],
     reason: isRobKong ? 'rob_kong_win' : selfDraw ? 'self_draw_win' : 'discard_win',
@@ -653,6 +668,15 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
     baseScore: 1,
     cappedFan: Math.max(...fanItems.map((item) => item.fan), 0),
     fanItems: fanItems.flatMap((item) => item.fanItems),
+    winnerDetails: fanItems.map((item) => ({
+      winner: item.winner,
+      tile: winningTile ?? (selfDraw && state.lastDraw?.playerIndex === item.winner ? state.lastDraw.tile : undefined),
+      title: item.title,
+      source: sourceOverride ?? (selfDraw ? 'SELF_DRAW' : 'DISCARD'),
+      fan: item.fan,
+      points: item.points,
+      fanItems: item.fanItems
+    })),
     scoreDelta,
     title: isRobKong ? '抢杠和牌' : selfDraw ? '自摸胡牌' : '点炮胡牌',
     description: isRobKong ? '抢杠：由加杠者支付所有分数。' : '基础飞小鸡规则结算。'
@@ -966,6 +990,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       delta[state.dealer] -= 1;
     }
     const scores = state.scores.map((score, index) => score + delta[index]);
+    const totalScores = (state.totalScores ?? [0, 0, 0, 0]).map((total, index) => total + delta[index]);
     const result: ScoreResult = {
       scores: [...scores],
       reason: 'four_winds_abort',
@@ -986,7 +1011,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       seed: `${state.seed}#fw:${state.stepIndex}`,
       currentRound: state.currentRound ?? 1,
       maxRounds: state.maxRounds ?? 1,
-      totalScores: [...scores],
+      totalScores: [...totalScores],
       dealer: state.dealer,
       players: state.players.map((player) => ({
         seatIndex: player.seatIndex,
@@ -996,7 +1021,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       }))
     });
     fresh.scores = [...scores];
-    fresh.totalScores = [...scores];
+    fresh.totalScores = [...totalScores];
     return { nextState: fresh, result };
   }
 
@@ -1151,7 +1176,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       delta[playerIndex] -= 8;
     }
     nextState.scores = nextState.scores.map((score, index) => score + delta[index]);
-    nextState.totalScores = [...nextState.scores];
+    nextState.totalScores = (nextState.totalScores ?? [0, 0, 0, 0]).map((total, index) => total + delta[index]);
     const result: ScoreResult = {
       scores: [...nextState.scores],
       reason: 'false_win',

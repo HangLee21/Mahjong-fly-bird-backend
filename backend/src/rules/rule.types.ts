@@ -32,6 +32,22 @@ export interface ScoreResult {
   scoreDelta?: number[];
   title?: string;
   description?: string;
+  /** 每个赢家的结算明细（谁胡、进张、牌型、原因）。 */
+  winnerDetails?: WinnerDetail[];
+}
+
+export type WinSource = 'SELF_DRAW' | 'DISCARD' | 'ROB_KONG';
+
+export interface WinnerDetail {
+  winner: number;
+  /** 进张：自摸的摸牌 / 点炮的炮牌 / 抢杠的杠牌。 */
+  tile?: number;
+  /** 牌型标题，如 清一色+无鸡、四小鸡。 */
+  title: string;
+  source: WinSource;
+  fan: number;
+  points: number;
+  fanItems: Array<{ code: string; name: string; fan: number; points: number; description?: string }>;
 }
 
 export type GameEvent =

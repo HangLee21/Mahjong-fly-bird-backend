@@ -190,7 +190,8 @@ export class GameService {
     });
 
     if (result.nextState.status === 'FINISHED') {
-      const finalScores = this.addScores(result.nextState.totalScores, result.nextState.scores);
+      // totalScores 已是跨局累计值（上一局结转 + 本局得失），直接持久化。
+      const finalScores = result.nextState.totalScores ?? result.nextState.scores;
       const finishedState = { ...result.nextState, totalScores: finalScores };
       const isFinalRound = (finishedState.currentRound ?? 1) >= (finishedState.maxRounds ?? 1);
       await roomStateStore.set(state.roomId, finishedState);

@@ -256,7 +256,14 @@ function isThirteenYao(tiles: number[]) {
 
 function hasNoXiaoJiAsWild(player: PlayerState, usesXiaoJiAsWild: boolean) {
   if (usesXiaoJiAsWild) return false;
-  return true;
+  // 无鸡 means the hand has no chick anywhere: not used as a wild in the
+  // winning shape, not held in the hand, and not used in a kong meld
+  // (e.g. pong + chick exposed kong). A chick used as the 4th kong tile
+  // must still suppress the 无鸡 fan.
+  if (countTiles(player.hand)[XIAO_JI] > 0) return false;
+  return !player.melds.some(
+    (meld) => meld.containsXiaoJiAsWild || meld.tiles.includes(XIAO_JI),
+  );
 }
 
 function isMenQing(player: PlayerState) {

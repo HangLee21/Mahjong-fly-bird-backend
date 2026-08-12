@@ -20,6 +20,15 @@ export async function buildApp() {
 
   app.get('/api/health', async () => ({ ok: true, ai: aiCircuitBreaker.status() }));
 
+  // Debug-only client log relay so real-device console output can be collected
+  // from the server logs (e.g. BgmManager playback diagnostics).
+  app.post('/api/debug/client-log', async (request, reply) => {
+    const body = (request.body ?? {}) as { level?: string; msg?: string };
+    const level = body.level === 'error' || body.level === 'warn' ? body.level : 'info';
+    logger[level]({ client: true }, body.msg ?? 'client log');
+    reply.send({ ok: true });
+  });
+
   await registerAppConfigRoutes(app);
   await registerAuthRoutes(app);
   await registerLobbyRoutes(app);

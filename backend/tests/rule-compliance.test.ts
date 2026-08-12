@@ -622,6 +622,39 @@ describe('暗杠（先碰后跳过、跨轮暗杠、杠上花）', () => {
     expect(result.scoreResult?.fanItems?.some((item) => item.code === 'BASIC_WIN')).toBe(true);
   });
 
+  it('kong flower with a chick as the exposed kong tile does not score 无鸡', () => {
+    const eng = engine();
+    const s = state();
+    // Mirrors the production round: exposed 6-dot kong uses the chick as its
+    // fourth tile, the replacement 2-bamboo completes the pair, win is 杠上花.
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [10, 10, 10], stepIndex: 29, claimedIndex: 1, fromPlayer: 2 },
+      { type: 'KONG_EXPOSED', tiles: [14, 14, 14, 18], stepIndex: 47, claimedIndex: 0, fromPlayer: 3, containsXiaoJiAsWild: true }
+    ];
+    s.players[0].hand = [5, 0, 2, 6, 19, 1, 7, 19];
+    s.lastDraw = { playerIndex: 0, tile: 19, source: 'PUBLIC_KONG', stepIndex: 48 };
+
+    const win = eng.verifyWin(s, 0, undefined, 'SELF_DRAW');
+    expect(win.ok).toBe(true);
+    const codes = win.fanItems.map((item) => item.code);
+    expect(codes).toContain('KONG_FLOWER');
+    expect(codes).not.toContain('NO_XIAO_JI');
+
+    // Control: the same winning shape with a real 6-dot kong (no chick) keeps
+    // the 无鸡 fan, because no chick appears anywhere in the hand or melds.
+    const control = state();
+    control.players[0].melds = [
+      { type: 'PONG', tiles: [10, 10, 10], stepIndex: 29, claimedIndex: 1, fromPlayer: 2 },
+      { type: 'KONG_EXPOSED', tiles: [14, 14, 14, 14], stepIndex: 47, claimedIndex: 0, fromPlayer: 3 }
+    ];
+    control.players[0].hand = [5, 0, 2, 6, 19, 1, 7, 19];
+    control.lastDraw = { playerIndex: 0, tile: 19, source: 'PUBLIC_KONG', stepIndex: 48 };
+    const controlWin = eng.verifyWin(control, 0, undefined, 'SELF_DRAW');
+    const controlCodes = controlWin.fanItems.map((item) => item.code);
+    expect(controlCodes).toContain('KONG_FLOWER');
+    expect(controlCodes).toContain('NO_XIAO_JI');
+  });
+
   it('wins with double kong flower after two consecutive kongs on the same turn', () => {
     const eng = engine();
     const s = state();

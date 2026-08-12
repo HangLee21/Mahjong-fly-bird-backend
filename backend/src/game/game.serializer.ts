@@ -6,6 +6,8 @@ export function publicPlayerView(player: PlayerState): PublicPlayerView {
   return {
     seatIndex: player.seatIndex,
     userId: player.userId,
+    nickname: player.nickname,
+    avatarUrl: player.avatarUrl,
     isAI: player.isAI,
     handCount: player.hand.length,
     melds: player.melds,

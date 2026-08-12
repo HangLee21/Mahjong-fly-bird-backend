@@ -84,6 +84,8 @@ export class GameService {
         players: room.seats.map((seat) => ({
           seatIndex: seat.seatIndex,
           userId: seat.userId ?? undefined,
+          nickname: seat.user?.nickname ?? undefined,
+          avatarUrl: seat.user?.avatarUrl ?? undefined,
           isAI: seat.isAI,
           aiModel: seat.aiModel ?? undefined
         }))
@@ -286,6 +288,11 @@ export class GameService {
         return;
       }
       if (!moved) break;
+      if (count === env.MAX_AI_ACTIONS_PER_TICK - 1) {
+        // Hit the per-tick cap while more AI actions remain; keep the chain
+        // going instead of stranding the game at an AI turn.
+        this.scheduleAdvanceAi(roomId, env.AI_ADVANCE_RETRY_DELAY_MS);
+      }
     }
   }
 

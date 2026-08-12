@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nextOverdueAction, earliestDeadline, autoResolveAction } from '../src/game/game-deadline.js';
+import { encodeAction } from '../src/rules/actions.js';
 import type { GameState } from '../src/game/game.state.js';
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
@@ -61,6 +62,62 @@ describe('game deadline helpers', () => {
       playerIndex: 2,
       action: { type: 'SELECT_KONG_TILE', tile: 7, actionId: 109 }
     });
+  });
+
+  it('forces a fallback discard when an AI turn exceeds the AI-turn timeout', () => {
+    const s = baseState({
+      status: 'PLAYING',
+      currentPlayer: 1,
+      updatedAt: 5000,
+      players: [0, 1, 2, 3].map((seatIndex) => ({
+        seatIndex,
+        isAI: seatIndex === 1,
+        hand: seatIndex === 1 ? [18, 5, 7] : [],
+        melds: [],
+        discards: [],
+        status: 'ACTIVE' as const
+      }))
+    });
+    const overdue = nextOverdueAction(s, 5000 + 26000);
+    expect(overdue).toEqual({
+      playerIndex: 1,
+      action: { type: 'DISCARD', tile: 18, actionId: encodeAction({ type: 'DISCARD', tile: 18 }) }
+    });
+  });
+
+  it('does not force a discard for an AI turn within the timeout', () => {
+    const s = baseState({
+      status: 'PLAYING',
+      currentPlayer: 1,
+      updatedAt: 5000,
+      players: [0, 1, 2, 3].map((seatIndex) => ({
+        seatIndex,
+        isAI: seatIndex === 1,
+        hand: seatIndex === 1 ? [18] : [],
+        melds: [],
+        discards: [],
+        status: 'ACTIVE' as const
+      }))
+    });
+    expect(nextOverdueAction(s, 5000 + 10000)).toBeNull();
+  });
+
+  it('schedules an AI-turn watchdog deadline for AI turns only', () => {
+    const s = baseState({
+      status: 'PLAYING',
+      currentPlayer: 2,
+      updatedAt: 1234,
+      players: [0, 1, 2, 3].map((seatIndex) => ({
+        seatIndex,
+        isAI: seatIndex === 2,
+        hand: [],
+        melds: [],
+        discards: [],
+        status: 'ACTIVE' as const
+      }))
+    });
+    expect(earliestDeadline(s)).toBe(1234 + 20000);
+    expect(earliestDeadline(baseState({ status: 'PLAYING', currentPlayer: 0 }))).toBeUndefined();
   });
 
   it('earliestDeadline picks the minimum pending response deadline', () => {

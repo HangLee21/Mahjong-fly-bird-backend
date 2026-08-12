@@ -88,6 +88,8 @@ export interface GameState {
 export interface PlayerState {
   seatIndex: number;
   userId?: string;
+  nickname?: string;
+  avatarUrl?: string;
   isAI: boolean;
   aiModel?: string;
   hand: number[];

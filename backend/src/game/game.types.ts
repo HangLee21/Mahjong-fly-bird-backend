@@ -4,6 +4,8 @@ import type { Meld } from './game.state.js';
 export interface PublicPlayerView {
   seatIndex: number;
   userId?: string;
+  nickname?: string;
+  avatarUrl?: string;
   isAI: boolean;
   handCount: number;
   melds: Meld[];
@@ -49,5 +51,5 @@ export interface CreateGameInput {
   maxRounds?: number;
   totalScores?: number[];
   dealer?: number;
-  players: Array<{ seatIndex: number; userId?: string; isAI: boolean; aiModel?: string }>;
+  players: Array<{ seatIndex: number; userId?: string; nickname?: string; avatarUrl?: string; isAI: boolean; aiModel?: string }>;
 }

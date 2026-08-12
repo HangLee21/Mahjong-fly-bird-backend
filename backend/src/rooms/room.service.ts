@@ -1,5 +1,6 @@
 import { AppError } from '../common/errors.js';
 import { logger } from '../common/logger.js';
+import { env } from '../config/env.js';
 import { lockManager, type LockManager } from '../storage/locks.js';
 import { roomStateStore, type RoomStateStore } from '../storage/room-state-store.js';
 import { getBroadcaster } from '../websocket/ws-broadcast.js';
@@ -79,5 +80,45 @@ export class RoomService {
       if (!updated) throw new AppError('ROOM_FULL', 'Room is full.');
       return updated;
     });
+  }
+
+  /**
+   * Deletes rooms that are no longer useful so created room codes do not
+   * occupy storage forever: finished rooms expire after ROOM_FINISHED_TTL_MS
+   * and inactive (abandoned) rooms after ROOM_ABANDONED_TTL_MS.
+   */
+  async cleanupExpiredRooms(): Promise<number> {
+    const now = Date.now();
+    const finishedBefore = new Date(now - env.ROOM_FINISHED_TTL_MS);
+    const inactiveBefore = new Date(now - env.ROOM_ABANDONED_TTL_MS);
+    const rooms = await this.rooms.findMany({});
+    let deleted = 0;
+
+    for (const room of rooms) {
+      const expired =
+        (room.status === 'FINISHED' && room.updatedAt <= finishedBefore) ||
+        ((room.status === 'WAITING' || room.status === 'PLAYING') && room.updatedAt <= inactiveBefore);
+      if (!expired) continue;
+
+      try {
+        await this.locks.withRoomLock(room.id, async () => {
+          await this.rooms.deleteRoom(room.id);
+          try {
+            await this.stateStore.delete(room.id);
+          } catch (error) {
+            logger.warn({ error, roomId: room.id }, 'Room deleted from the database but Redis state cleanup failed');
+          }
+        });
+        getBroadcaster().broadcastRoom(room.id, 'GAME_EVENT', {
+          event: 'ROOM_CLOSED',
+          roomId: room.roomCode
+        });
+        deleted += 1;
+        logger.info({ roomId: room.id, roomCode: room.roomCode, status: room.status }, 'Expired room cleaned up');
+      } catch (error) {
+        logger.warn({ error, roomId: room.id }, 'Failed to clean up expired room');
+      }
+    }
+    return deleted;
   }
 }

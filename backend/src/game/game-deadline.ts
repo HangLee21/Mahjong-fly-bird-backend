@@ -1,6 +1,7 @@
 import type { GameState } from './game.state.js';
 import type { GameAction } from '../rules/actions.js';
 import { encodeAction } from '../rules/actions.js';
+import { env } from '../config/env.js';
 
 export type OverdueAction = { playerIndex: number; action: GameAction };
 
@@ -27,6 +28,20 @@ export function nextOverdueAction(state: GameState, now = Date.now()): OverdueAc
       };
     }
   }
+  // A stuck AI turn (e.g. an interrupted advance chain) must never block the
+  // table forever: after the AI-turn timeout, force a legal fallback discard.
+  if (state.status === 'PLAYING') {
+    const player = state.players[state.currentPlayer];
+    if (player?.isAI && now - state.updatedAt >= env.AI_TURN_TIMEOUT_MS) {
+      const tile = player.hand[0];
+      if (tile !== undefined) {
+        return {
+          playerIndex: player.seatIndex,
+          action: { type: 'DISCARD', tile, actionId: encodeAction({ type: 'DISCARD', tile }) }
+        };
+      }
+    }
+  }
   return null;
 }
 
@@ -40,7 +55,13 @@ export function earliestDeadline(state: GameState): number | undefined {
       .filter((deadline): deadline is number => deadline !== undefined);
     if (deadlines.length > 0) return Math.min(...deadlines);
   }
-  return state.pendingKongSelection?.deadlineAt;
+  if (state.pendingKongSelection?.deadlineAt !== undefined) return state.pendingKongSelection.deadlineAt;
+  // Schedule a watchdog for AI turns so a stuck AI is force-moved.
+  if (state.status === 'PLAYING') {
+    const player = state.players[state.currentPlayer];
+    if (player?.isAI) return state.updatedAt + env.AI_TURN_TIMEOUT_MS;
+  }
+  return undefined;
 }
 
 /**

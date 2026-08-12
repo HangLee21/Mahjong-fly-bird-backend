@@ -766,3 +766,62 @@ describe('碰后加杠与胡牌可跳过', () => {
     expect(afterPass.players[1].hand).toHaveLength(14);
   });
 });
+
+describe('带鸡清一色', () => {
+  it('scores QING_YI_SE when the chick is used as a wild in a one-suit hand', () => {
+    const s = state();
+    s.status = 'PLAYING';
+    s.currentPlayer = 0;
+    s.xiaoJiActiveAsWild = true;
+    s.lastDraw = { playerIndex: 0, tile: 16, source: 'WALL', stepIndex: 32 };
+    // 1T 1T | 2T 2T 2T | 4T 5T 6T | 8T 8T + 小鸡(18, wild as 8T), meld 7T x3
+    s.players[0].hand = [9, 9, 10, 10, 10, 12, 13, 14, 16, 16, 18];
+    s.players[0].melds = [{ type: 'PONG', tiles: [15, 15, 15], stepIndex: 0, claimedIndex: 1, fromPlayer: 1 }];
+
+    const result = engine().applyAction(s, 0, { type: 'WIN', actionId: 101 }).nextState.result as {
+      fanItems: Array<{ code: string; name: string; fan: number }>;
+      title: string;
+    };
+
+    expect(result.title).toBe('自摸胡牌');
+    const codes = result.fanItems.map((item) => item.code);
+    expect(codes).toContain('QING_YI_SE');
+    expect(result.fanItems.find((item) => item.code === 'QING_YI_SE')?.fan).toBe(2);
+  });
+
+  it('does not score QING_YI_SE when the chick is a real bamboo tile in a mixed hand', () => {
+    const s = state();
+    s.status = 'PLAYING';
+    s.currentPlayer = 0;
+    s.xiaoJiActiveAsWild = true;
+    s.lastDraw = { playerIndex: 0, tile: 18, source: 'WALL', stepIndex: 32 };
+    // 筒一色 melds + 一条 triplet（小鸡作为真实条子，非癞子）
+    s.players[0].hand = [9, 9, 10, 10, 10, 12, 13, 14, 15, 16, 17, 18, 18, 18];
+
+    const result = engine().applyAction(s, 0, { type: 'WIN', actionId: 101 }).nextState.result as {
+      fanItems: Array<{ code: string }>;
+    };
+    const codes = result.fanItems.map((item) => item.code);
+    expect(codes).not.toContain('QING_YI_SE');
+    expect(codes).not.toContain('HUN_YI_SE');
+  });
+
+  it('scores HUN_YI_SE when the chick is a wild in a one-suit hand with honors', () => {
+    const s = state();
+    s.status = 'PLAYING';
+    s.currentPlayer = 0;
+    s.xiaoJiActiveAsWild = true;
+    s.lastDraw = { playerIndex: 0, tile: 16, source: 'WALL', stepIndex: 32 };
+    // 东东 pair | 2T 2T 2T | 4T 5T 6T | 8T 8T + 小鸡(18, wild as 8T), meld 7T x3
+    s.players[0].hand = [27, 27, 10, 10, 10, 12, 13, 14, 16, 16, 18];
+    s.players[0].melds = [{ type: 'PONG', tiles: [15, 15, 15], stepIndex: 0, claimedIndex: 1, fromPlayer: 1 }];
+
+    const result = engine().applyAction(s, 0, { type: 'WIN', actionId: 101 }).nextState.result as {
+      fanItems: Array<{ code: string; fan: number }>;
+    };
+    const codes = result.fanItems.map((item) => item.code);
+    expect(codes).toContain('HUN_YI_SE');
+    expect(result.fanItems.find((item) => item.code === 'HUN_YI_SE')?.fan).toBe(1);
+    expect(codes).not.toContain('QING_YI_SE');
+  });
+});

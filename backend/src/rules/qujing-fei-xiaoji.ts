@@ -268,16 +268,22 @@ function isMenQing(player: PlayerState) {
   return player.melds.every((meld) => meld.type === 'KONG_CONCEALED');
 }
 
-function isQingYiSe(tiles: number[]) {
+/**
+ * 带鸡清一色/混一色：小鸡作为癞子使用时按它代替的花色计，
+ * 不能按它真实的"一条"花色把清一色打断。
+ */
+function isQingYiSe(tiles: number[], xiaoJiAsWild: boolean) {
   const suited = tiles.filter(isSuited);
   if (suited.length === 0) return true;
   if (tiles.some((tile) => isHonor(tile))) return false;
-  return new Set(suited.map(suit)).size === 1;
+  const suitTiles = xiaoJiAsWild ? suited.filter((tile) => tile !== XIAO_JI) : suited;
+  return new Set(suitTiles.map(suit)).size === 1;
 }
 
-function isHunYiSe(tiles: number[]) {
+function isHunYiSe(tiles: number[], xiaoJiAsWild: boolean) {
   const suited = tiles.filter(isSuited);
-  return suited.length > 0 && tiles.some(isHonor) && new Set(suited.map(suit)).size === 1;
+  const suitTiles = xiaoJiAsWild ? suited.filter((tile) => tile !== XIAO_JI) : suited;
+  return suitTiles.length > 0 && tiles.some(isHonor) && new Set(suitTiles.map(suit)).size === 1;
 }
 
 function meldTripletTile(meld: Meld) {
@@ -394,8 +400,8 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     const kongCount = player.melds.filter((meld) => meld.type.startsWith('KONG')).length;
     if (kongCount >= 4) addFan(fanItems, 'FOUR_KONGS', '四杠', 3);
     else if (kongCount >= 2) addFan(fanItems, 'DOUBLE_KONG', '双杠', 1);
-    if (isQingYiSe(allTiles)) addFan(fanItems, 'QING_YI_SE', allTiles.every(isHonor) ? '字一色' : '清一色', 2);
-    else if (isHunYiSe(allTiles)) addFan(fanItems, 'HUN_YI_SE', '混一色', 1);
+    if (isQingYiSe(allTiles, usesXiaoJiAsWild)) addFan(fanItems, 'QING_YI_SE', allTiles.every(isHonor) ? '字一色' : '清一色', 2);
+    else if (isHunYiSe(allTiles, usesXiaoJiAsWild)) addFan(fanItems, 'HUN_YI_SE', '混一色', 1);
     if (standard.ok && isDaDui(player)) addFan(fanItems, 'DA_DUI', '大对', 1);
     const dragon = dragonFan(player);
     if (dragon) addFan(fanItems, dragon.code, dragon.name, dragon.fan);

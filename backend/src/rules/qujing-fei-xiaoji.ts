@@ -270,12 +270,9 @@ function isThirteenYao(tiles: number[]) {
 
 function hasNoXiaoJiAsWild(player: PlayerState, usesXiaoJiAsWild: boolean) {
   if (usesXiaoJiAsWild) return false;
-  // 无鸡 only cares whether the chick is used as a wild anywhere: in the
-  // winning shape (usesXiaoJiAsWild) or as the wild 4th tile of a kong meld.
-  // A chick held in the hand as a real 1-bamboo tile does not block 无鸡.
-  return !player.melds.some(
-    (meld) => meld.containsXiaoJiAsWild || meld.tiles.includes(XIAO_JI),
-  );
+  // 无鸡 = 没有小鸡，或小鸡作为「1条」使用（规则书 4.1）。
+  // 只有被当万能牌用（如带鸡杠）才不算无鸡；副露里作为真一条的吃/碰不阻断无鸡。
+  return !player.melds.some((meld) => meld.containsXiaoJiAsWild === true);
 }
 
 function isMenQing(player: PlayerState) {
@@ -320,9 +317,28 @@ function pairTiles(player: PlayerState) {
 function isDaDui(player: PlayerState) {
   if (player.melds.some((meld) => meld.type === 'CHOW')) return false;
   const counts = countTiles(player.hand);
-  const pairCount = counts.filter((count) => count === 2).length;
-  const singleCount = counts.filter((count) => count === 1).length;
-  return singleCount === 0 && pairCount === 1;
+  const wildcards = counts[XIAO_JI];
+  counts[XIAO_JI] = 0;
+  const setsNeeded = 4 - player.melds.length;
+  for (let pair = 0; pair < TILE_TYPE_COUNT; pair += 1) {
+    const pairNeed = Math.max(0, 2 - counts[pair]);
+    if (pairNeed > wildcards) continue;
+    const next = [...counts];
+    next[pair] = Math.max(0, next[pair] - 2);
+    if (canMakeTripletSets(next, wildcards - pairNeed, setsNeeded)) return true;
+  }
+  return wildcards >= 2 && canMakeTripletSets([...counts], wildcards - 2, setsNeeded);
+}
+
+function canMakeTripletSets(counts: number[], wildcards: number, setsNeeded: number): boolean {
+  if (setsNeeded === 0) return counts.every((count) => count === 0);
+  const first = counts.findIndex((count) => count > 0);
+  if (first < 0) return wildcards >= setsNeeded * 3;
+  const need = Math.max(0, 3 - counts[first]);
+  if (need > wildcards) return false;
+  const next = [...counts];
+  next[first] = 0;
+  return canMakeTripletSets(next, wildcards - need, setsNeeded - 1);
 }
 
 function dragonFan(player: PlayerState) {
@@ -389,6 +405,8 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   const hasNoWildWin = standardNoWild.ok || sevenPairsNoWild.ok || lanPai;
   const usesXiaoJiAsWild = !hasNoWildWin
     && ((standard.ok && standard.wildcardsUsed > 0) || (sevenPairs.ok && sevenPairs.wildcardsUsed > 0));
+  // 小鸡在副露（杠）里当癞子时同样按它代替的花色计，不能打断清一色/混一色。
+  const chickAsWild = usesXiaoJiAsWild || player.melds.some((meld) => meld.containsXiaoJiAsWild === true);
   const winTile = tile ?? (state.lastDraw?.playerIndex === playerIndex ? state.lastDraw.tile : undefined);
   const longBei = sevenPairs.ok && winTile !== undefined && sevenPairs.quadTiles.length >= 2 && sevenPairs.quadTiles.includes(winTile);
 
@@ -414,8 +432,8 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     const kongCount = player.melds.filter((meld) => meld.type.startsWith('KONG')).length;
     if (kongCount >= 4) addFan(fanItems, 'FOUR_KONGS', '四杠', 3);
     else if (kongCount >= 2) addFan(fanItems, 'DOUBLE_KONG', '双杠', 1);
-    if (isQingYiSe(allTiles, usesXiaoJiAsWild)) addFan(fanItems, 'QING_YI_SE', allTiles.every(isHonor) ? '字一色' : '清一色', 2);
-    else if (isHunYiSe(allTiles, usesXiaoJiAsWild)) addFan(fanItems, 'HUN_YI_SE', '混一色', 1);
+    if (isQingYiSe(allTiles, chickAsWild)) addFan(fanItems, 'QING_YI_SE', allTiles.every(isHonor) ? '字一色' : '清一色', 2);
+    else if (isHunYiSe(allTiles, chickAsWild)) addFan(fanItems, 'HUN_YI_SE', '混一色', 1);
     if (standard.ok && isDaDui(player)) addFan(fanItems, 'DA_DUI', '大对', 1);
     const dragon = dragonFan(player);
     if (dragon) addFan(fanItems, dragon.code, dragon.name, dragon.fan);

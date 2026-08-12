@@ -24,4 +24,5 @@ export type WsServerMessage =
   | { type: 'ACK'; requestId?: string; payload?: unknown }
   | { type: 'ERROR'; requestId?: string; code: string; message: string; details?: unknown }
   | { type: 'GAME_VIEW'; roomId: string; payload: unknown }
-  | { type: 'GAME_EVENT'; roomId: string; payload: unknown };
+  | { type: 'GAME_EVENT'; roomId: string; payload: unknown }
+  | { type: 'ROOM_VIEW'; roomId: string; payload: unknown };

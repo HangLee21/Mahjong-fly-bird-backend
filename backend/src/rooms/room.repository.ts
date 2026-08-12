@@ -61,6 +61,14 @@ export class RoomRepository {
     return this.findById(roomId);
   }
 
+  async updateConfig(roomId: string, configJson: Record<string, unknown>) {
+    return prisma.room.update({
+      where: { id: roomId },
+      data: { configJson: configJson as Prisma.InputJsonObject },
+      include: { seats: { orderBy: { seatIndex: 'asc' }, include: { user: true } } }
+    });
+  }
+
   async leave(roomId: string, userId: string) {
     const room = await this.findById(roomId);
     const seat = room?.seats.find((item) => item.userId === userId);

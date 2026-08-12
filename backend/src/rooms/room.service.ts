@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { lockManager, type LockManager } from '../storage/locks.js';
 import { roomStateStore, type RoomStateStore } from '../storage/room-state-store.js';
 import { getBroadcaster } from '../websocket/ws-broadcast.js';
+import { presentRoom } from './room.presenter.js';
 import { RoomRepository } from './room.repository.js';
 
 export class RoomService {
@@ -78,6 +79,26 @@ export class RoomService {
       if (!room.seats.some((seat) => seat.status === 'EMPTY')) return room;
       const updated = await this.rooms.addAi(room.id, input.aiLevel, input.aiModel, input.seatIndex);
       if (!updated) throw new AppError('ROOM_FULL', 'Room is full.');
+      return updated;
+    });
+  }
+
+  async updateRules(roomId: string, userId: string, rules: Record<string, unknown>) {
+    const target = await this.getRoom(roomId);
+    return this.locks.withRoomLock(target.id, async () => {
+      const room = await this.getRoom(target.id);
+      if (room.ownerId !== userId) {
+        throw new AppError('FORBIDDEN', 'Only the room owner can change rules.', 403);
+      }
+      if (room.status !== 'WAITING') {
+        throw new AppError('GAME_ALREADY_STARTED', 'Rules can only be changed before the game starts.');
+      }
+      const config = {
+        ...(typeof room.configJson === 'object' && room.configJson !== null ? room.configJson : {}),
+        ...rules
+      };
+      const updated = await this.rooms.updateConfig(room.id, config);
+      getBroadcaster().broadcastRoom(updated.id, 'ROOM_VIEW', presentRoom(updated));
       return updated;
     });
   }

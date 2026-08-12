@@ -13,7 +13,7 @@ import { lockManager } from '../storage/locks.js';
 import { roomStateStore } from '../storage/room-state-store.js';
 import { logger } from '../common/logger.js';
 import { RoomRepository } from '../rooms/room.repository.js';
-import { normalizeRoomRules } from '../rooms/room.presenter.js';
+import { normalizeRoomRules, presentRoom } from '../rooms/room.presenter.js';
 import { getBroadcaster } from '../websocket/ws-broadcast.js';
 import { nextOverdueAction, earliestDeadline, autoResolveAction } from './game-deadline.js';
 import type { GameState } from './game.state.js';
@@ -93,6 +93,10 @@ export class GameService {
 
       await this.rooms.setStatus(room.id, 'PLAYING');
       await roomStateStore.set(room.id, state);
+      getBroadcaster().broadcastRoom(room.id, 'ROOM_VIEW', {
+        ...presentRoom({ ...room, status: 'PLAYING' }),
+        gameId: game.id
+      });
       await this.broadcastViews(state);
       this.scheduleAdvanceAi(room.id);
       const playerIndex = state.players.findIndex((player) => player.userId === userId);

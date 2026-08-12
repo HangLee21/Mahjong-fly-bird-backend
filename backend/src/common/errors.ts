@@ -1,5 +1,6 @@
 export type ErrorCode =
   | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
   | 'ROOM_NOT_FOUND'
   | 'ROOM_FULL'
   | 'ROOM_NOT_JOINED'

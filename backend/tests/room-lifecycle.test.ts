@@ -74,4 +74,26 @@ describe('room lifecycle', () => {
     expect(result.ownerId).toBe('user-2');
     expect(deleteState).not.toHaveBeenCalled();
   });
+
+  it('lets the room owner update rules and persists the merged config', async () => {
+    const updatedRoom = { ...targetRoom, configJson: { roundCount: 8 } };
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => targetRoom),
+      updateConfig: vi.fn(async () => updatedRoom)
+    } as unknown as RoomRepository;
+    const service = new RoomService(rooms, createStateStore(vi.fn()), createLockManager([]));
+
+    const result = await service.updateRules('123456', 'user-1', { roundCount: 8 });
+    expect(rooms.updateConfig).toHaveBeenCalledWith('internal-room-id', { roundCount: 8 });
+    expect(result.configJson).toEqual({ roundCount: 8 });
+  });
+
+  it('rejects rule changes from a non-owner', async () => {
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => targetRoom)
+    } as unknown as RoomRepository;
+    const service = new RoomService(rooms, createStateStore(vi.fn()), createLockManager([]));
+
+    await expect(service.updateRules('123456', 'user-2', { roundCount: 8 })).rejects.toThrow(/owner/);
+  });
 });

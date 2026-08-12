@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/auth.routes.js';
 import { gameService } from '../game/game.service.js';
 import { defaultRoomRules, presentRoom, presentRoomPreview } from './room.presenter.js';
 import { RoomService } from './room.service.js';
+import { getBroadcaster } from '../websocket/ws-broadcast.js';
 
 const AddAiBody = z.object({
   seatIndex: z.coerce.number().int().min(0).max(3).optional(),
@@ -49,7 +50,9 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
     const body = JoinRoomBody.parse(request.body ?? {});
-    return presentRoom(await rooms.joinRoom(roomId, auth.userId, body?.seatIndex));
+    const room = await rooms.joinRoom(roomId, auth.userId, body?.seatIndex);
+    getBroadcaster().broadcastRoom(room.id, 'ROOM_VIEW', presentRoom(room));
+    return presentRoom(room);
   });
 
   app.post('/api/rooms/:roomId/leave', async (request) => {
@@ -63,7 +66,16 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
     const body = AddAiBody.parse(request.body ?? {});
-    return presentRoom(await rooms.addAi(roomId, auth.userId, { ...body, aiModel: body.aiModel ?? body.model }));
+    const room = await rooms.addAi(roomId, auth.userId, { ...body, aiModel: body.aiModel ?? body.model });
+    getBroadcaster().broadcastRoom(room.id, 'ROOM_VIEW', presentRoom(room));
+    return presentRoom(room);
+  });
+
+  app.post('/api/rooms/:roomId/rules', async (request) => {
+    const auth = await requireAuth(request);
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    const body = z.record(z.unknown()).parse(request.body ?? {});
+    return presentRoom(await rooms.updateRules(roomId, auth.userId, body));
   });
 
   app.post('/api/rooms/:roomId/start', async (request) => {

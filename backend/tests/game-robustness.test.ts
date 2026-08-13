@@ -83,7 +83,7 @@ describe('game robustness', () => {
     const service = new GameService({} as never);
     await service.advanceAi('room');
 
-    expect(aiGateway.requestAction).toHaveBeenCalled();
+    expect(aiGateway.requestAction).toHaveBeenCalledTimes(1);
     expect(mockedGameStep).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ actionSource: 'FALLBACK' }) })
     );

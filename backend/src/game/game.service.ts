@@ -23,6 +23,7 @@ export type ActionSource = 'HUMAN' | 'AI' | 'FALLBACK' | 'SYSTEM';
 
 export class GameService {
   private readonly roomDeadlineTimers = new Map<string, NodeJS.Timeout>();
+  private readonly roomAiTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly rooms = new RoomRepository()) {}
 
@@ -240,10 +241,9 @@ export class GameService {
   }
 
   async advanceAi(roomId: string) {
-    for (let count = 0; count < env.MAX_AI_ACTIONS_PER_TICK; count += 1) {
-      let moved = false;
-      try {
-        moved = await lockManager.withRoomLock(roomId, async () => {
+    let moved = false;
+    try {
+      moved = await lockManager.withRoomLock(roomId, async () => {
           const state = await roomStateStore.get(roomId);
           if (!state || !['PLAYING', 'WAITING_RESPONSE'].includes(state.status)) return false;
           const current = await this.expireOverdue(state);
@@ -284,21 +284,15 @@ export class GameService {
           const nextState = await this.applyValidatedAction(current, aiPlayer.seatIndex, action, source, aiModel);
           await this.broadcastViews(nextState);
           return Boolean(this.nextAiPlayerWithActions(nextState));
-        });
-      } catch (error) {
-        // Transient lock/Redis/AI infrastructure failures must not crash the
-        // process or strand the room; retry shortly and stop this cycle.
-        logger.warn({ error, roomId }, 'AI advance step failed; scheduling retry');
-        this.scheduleAdvanceAi(roomId, env.AI_ADVANCE_RETRY_DELAY_MS);
-        return;
-      }
-      if (!moved) break;
-      if (count === env.MAX_AI_ACTIONS_PER_TICK - 1) {
-        // Hit the per-tick cap while more AI actions remain; keep the chain
-        // going instead of stranding the game at an AI turn.
-        this.scheduleAdvanceAi(roomId, env.AI_ADVANCE_RETRY_DELAY_MS);
-      }
+      });
+    } catch (error) {
+      // Transient lock/Redis/AI infrastructure failures must not crash the
+      // process or strand the room; retry shortly and stop this cycle.
+      logger.warn({ error, roomId }, 'AI advance step failed; scheduling retry');
+      this.scheduleAdvanceAi(roomId, env.AI_ADVANCE_RETRY_DELAY_MS);
+      return;
     }
+    if (moved) this.scheduleAdvanceAi(roomId);
   }
 
   /**
@@ -339,12 +333,15 @@ export class GameService {
     if (advanced) this.scheduleAdvanceAi(roomId);
   }
 
-  private scheduleAdvanceAi(roomId: string, delayMs = 0) {
+  private scheduleAdvanceAi(roomId: string, delayMs = env.AI_ACTION_DELAY_MS) {
+    if (this.roomAiTimers.has(roomId)) return;
     const timer = setTimeout(() => {
+      this.roomAiTimers.delete(roomId);
       void this.advanceAi(roomId).catch((error) => {
         logger.error({ error, roomId }, 'AI advance failed unexpectedly');
       });
     }, delayMs);
+    this.roomAiTimers.set(roomId, timer);
     timer.unref?.();
   }
 

@@ -39,7 +39,7 @@ const EnvSchema = z.object({
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().default(3000),
   AI_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().min(1).default(3),
   AI_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().min(0).default(30000),
-  AI_ACTION_DELAY_MS: z.coerce.number().int().min(300).default(1600),
+  AI_ACTION_DELAY_MS: z.coerce.number().int().min(300).default(900),
   AI_ADVANCE_RETRY_DELAY_MS: z.coerce.number().int().min(0).default(2000),
   AI_TURN_TIMEOUT_MS: z.coerce.number().int().min(0).default(20000),
   MAX_AI_ACTIONS_PER_TICK: z.coerce.number().default(20),

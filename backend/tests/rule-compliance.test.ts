@@ -257,6 +257,7 @@ describe('包牌', () => {
       { type: 'PONG', tiles: [32, 32, 32], stepIndex: 2, claimedIndex: 1, fromPlayer: 3 }
     ];
     s.players[1].hand = [33, 33, 33, 0, 1, 2, 27, 27];
+    s.lastDraw = { playerIndex: 1, tile: 33, source: 'WALL', stepIndex: 0 };
     s.baoPai = [{ protectedPlayer: 1, payer: 0, kind: 'BIG_THREE_DRAGONS' }];
     const result = engine().applyAction(s, 1, { type: 'WIN', actionId: 101 });
     expect(result.scoreResult?.winnerIndexes).toEqual([1]);

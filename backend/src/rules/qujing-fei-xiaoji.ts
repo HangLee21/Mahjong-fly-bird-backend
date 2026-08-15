@@ -491,7 +491,9 @@ function buildSelfActions(state: GameState, playerIndex: number): GameAction[] {
   if (state.status !== 'PLAYING' || state.currentPlayer !== playerIndex) return [];
   const player = state.players[playerIndex];
   const actions: GameAction[] = sortedUnique(player.hand).map((tile) => ({ type: 'DISCARD', tile, actionId: tile }));
-  if (canWinInState(state, playerIndex, undefined, 'SELF_DRAW').ok) actions.push({ type: 'WIN', actionId: encodeAction({ type: 'WIN' }) });
+  if (state.lastDraw?.playerIndex === playerIndex && canWinInState(state, playerIndex, undefined, 'SELF_DRAW').ok) {
+    actions.push({ type: 'WIN', actionId: encodeAction({ type: 'WIN' }) });
+  }
 
   const handError = state.handErrors?.[playerIndex] ?? 0;
   if (handError !== 0) return actions;
@@ -855,6 +857,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       firstRound: { count: 0, broken: false },
       baoPai: [],
       handErrors: [0, 0, 0, 0],
+      lastDraw: { playerIndex: dealer, tile: players[dealer].hand[players[dealer].hand.length - 1], source: 'WALL', stepIndex: 0 },
       currentPlayer: dealer,
       dealer,
       roundIndex: Math.max(0, (input.currentRound ?? 1) - 1),

@@ -79,6 +79,22 @@ describe('QujingFeiXiaoJiRuleEngine', () => {
     expect(legal.some((action) => action.type === 'WIN')).toBe(false);
   });
 
+  it('does not offer self-draw immediately after chow even if the hand is a winning shape', () => {
+    const engine = new QujingFeiXiaoJiRuleEngine();
+    const s = state();
+    s.players[0].hand = [3, 0, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.players[1].hand = [2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 27, 27];
+    s.players[2].hand = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28];
+    s.players[3].hand = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28];
+
+    const afterDiscard = engine.applyAction(s, 0, { type: 'DISCARD', tile: 3, actionId: 3 }).nextState;
+    const afterChow = engine.applyAction(afterDiscard, 1, { type: 'CHOW_MIDDLE', tile: 3, actionId: 104 }).nextState;
+
+    const legal = engine.getLegalActions(afterChow, 1);
+    expect(legal.some((action) => action.type === 'DISCARD')).toBe(true);
+    expect(legal.some((action) => action.type === 'WIN')).toBe(false);
+  });
+
   it('allows next player to chow without using xiaoji as wildcard', () => {
     const engine = new QujingFeiXiaoJiRuleEngine();
     const s = state();

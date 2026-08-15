@@ -77,6 +77,14 @@ export class GameService {
         roomId: room.id,
         gameId: game.id,
         ruleVersion: room.ruleVersion,
+        rules: {
+          allowChow: rules.allowChow !== false,
+          allowPong: rules.allowPong !== false,
+          xiaoJiWildEnabled: rules.xiaoJiWildEnabled !== false,
+          fanCap: Number(rules.fanCap) || 3,
+          allowMultiWin: rules.allowMultiWin !== false,
+          roundCount: maxRounds
+        },
         seed: game.seed,
         currentRound,
         maxRounds,

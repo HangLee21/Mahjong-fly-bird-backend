@@ -453,7 +453,7 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
   }
 
   const rawFan = fanItems.reduce((sum, item) => sum + item.fan, 0);
-  const fan = Math.min(3, rawFan);
+  const fan = Math.min(state.rules?.fanCap ?? 3, rawFan);
   return {
     ok: true,
     code: fanItems[0]?.code ?? 'BASIC_WIN',
@@ -528,13 +528,15 @@ function responseActions(state: GameState, playerIndex: number, discard: { tile:
   if (!sameTurnFuriten && !xiaoJiRefusal && canWinInState(state, playerIndex, tile, 'DISCARD').ok) actions.push({ type: 'WIN', tile, actionId: encodeAction({ type: 'WIN' }) });
 
   if (handError === 0) {
-    if (counts[tile] >= 2 && !furiten?.passedPongTiles.includes(tile)) actions.push({ type: 'PONG', tile, actionId: encodeAction({ type: 'PONG' }) });
+    if (state.rules?.allowPong !== false && counts[tile] >= 2 && !furiten?.passedPongTiles.includes(tile)) {
+      actions.push({ type: 'PONG', tile, actionId: encodeAction({ type: 'PONG' }) });
+    }
     if (counts[tile] >= 3 || (allowWild && tile !== XIAO_JI && counts[tile] >= 2 && counts[XIAO_JI] >= 1)) {
       actions.push({ type: 'KONG_EXPOSED', tile, actionId: encodeAction({ type: 'KONG_EXPOSED' }) });
     }
 
     const nextPlayer = (discard.fromPlayer + 1) % state.players.length;
-    if (playerIndex === nextPlayer && tile !== XIAO_JI && isSuited(tile)) {
+    if (state.rules?.allowChow !== false && playerIndex === nextPlayer && tile !== XIAO_JI && isSuited(tile)) {
       for (const type of ['CHOW_LEFT', 'CHOW_MIDDLE', 'CHOW_RIGHT'] as const) {
         const need = chowTiles(tile, type);
         if (need && need.every((item) => counts[item] > 0)) actions.push({ type, tile, actionId: encodeAction({ type }) });
@@ -643,7 +645,7 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
   const scoreDelta = [0, 0, 0, 0];
   const fanItems = winners.map((winner) => {
     const win = analyzeWin(state, winner, winningTile, sourceOverride ?? (selfDraw ? 'SELF_DRAW' : 'DISCARD'));
-    return { winner, fan: Math.min(3, win.fan), title: win.title, code: win.code, points: win.points, fanItems: win.fanItems };
+    return { winner, fan: Math.min(state.rules?.fanCap ?? 3, win.fan), title: win.title, code: win.code, points: win.points, fanItems: win.fanItems };
   });
 
   for (const item of fanItems) {
@@ -838,13 +840,14 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       gameId: input.gameId,
       roomId: input.roomId,
       ruleVersion: input.ruleVersion,
+      rules: input.rules,
       seed: input.seed,
       status: 'PLAYING',
       players,
       wall: deal.wall,
       dice: deal.dice,
       publicKongSlots: deal.publicKongSlots,
-      xiaoJiActiveAsWild: true,
+      xiaoJiActiveAsWild: input.rules?.xiaoJiWildEnabled !== false,
       kongCount: 0,
       kongDrawStreak: players.map(() => 0),
       specialRuns: players.map(() => ({ honorDiscards: 0, yaojiuDiscards: 0, containsXiaoJiDiscard: false, brokenByMeld: false })),
@@ -907,9 +910,11 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
             nextState.pendingResponses = [];
           }
         } else if (action.type === 'WIN') {
-          const winners = (nextState.pendingResponses ?? [])
-            .filter((pending) => pending.availableActions.some((item) => item.type === 'WIN'))
-            .map((pending) => pending.playerIndex);
+          const winners = nextState.rules?.allowMultiWin === false
+            ? [playerIndex]
+            : (nextState.pendingResponses ?? [])
+              .filter((pending) => pending.availableActions.some((item) => item.type === 'WIN'))
+              .map((pending) => pending.playerIndex);
           score = scoreResult(nextState, winners, rob.fromPlayer, false, false, rob.tile, 'ROB_KONG');
           nextState.status = 'FINISHED';
           nextState.result = score;
@@ -926,9 +931,11 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
           nextState.pendingResponses = [];
         }
       } else if (action.type === 'WIN' && nextState.lastDiscard) {
-        const winners = (nextState.pendingResponses ?? [])
-          .filter((pending) => pending.availableActions.some((item) => item.type === 'WIN'))
-          .map((pending) => pending.playerIndex);
+        const winners = nextState.rules?.allowMultiWin === false
+          ? [playerIndex]
+          : (nextState.pendingResponses ?? [])
+            .filter((pending) => pending.availableActions.some((item) => item.type === 'WIN'))
+            .map((pending) => pending.playerIndex);
         score = scoreResult(nextState, winners, nextState.lastDiscard.fromPlayer, false, false, nextState.lastDiscard.tile);
         nextState.status = 'FINISHED';
         nextState.result = score;
@@ -1033,6 +1040,7 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
       roomId: state.roomId,
       gameId: state.gameId,
       ruleVersion: state.ruleVersion,
+      rules: state.rules,
       seed: `${state.seed}#fw:${state.stepIndex}`,
       currentRound: state.currentRound ?? 1,
       maxRounds: state.maxRounds ?? 1,

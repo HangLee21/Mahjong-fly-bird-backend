@@ -1,9 +1,19 @@
 import type { GameAction } from '../rules/actions.js';
 
+export interface GameRulesConfig {
+  allowChow: boolean;
+  allowPong: boolean;
+  xiaoJiWildEnabled: boolean;
+  fanCap: number;
+  allowMultiWin: boolean;
+  roundCount?: number;
+}
+
 export interface GameState {
   gameId: string;
   roomId: string;
   ruleVersion: string;
+  rules?: GameRulesConfig;
   seed: string;
   status: 'INIT' | 'PLAYING' | 'WAITING_RESPONSE' | 'FINISHED';
   players: PlayerState[];

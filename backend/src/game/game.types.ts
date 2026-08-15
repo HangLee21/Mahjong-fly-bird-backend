@@ -1,5 +1,5 @@
 import type { GameAction } from '../rules/actions.js';
-import type { Meld } from './game.state.js';
+import type { GameRulesConfig, Meld } from './game.state.js';
 
 export interface PublicPlayerView {
   seatIndex: number;
@@ -46,6 +46,7 @@ export interface CreateGameInput {
   roomId: string;
   gameId: string;
   ruleVersion: string;
+  rules?: GameRulesConfig;
   seed: string;
   currentRound?: number;
   maxRounds?: number;

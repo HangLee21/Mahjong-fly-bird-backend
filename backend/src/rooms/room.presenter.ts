@@ -26,6 +26,8 @@ export const defaultRoomRules = {
   preset: env.DEFAULT_RULE_VERSION,
   roundCount: 16,
   allowChow: true,
+  allowPong: true,
+  xiaoJiWildEnabled: true,
   fanCap: 3,
   publicKongTiles: 2,
   xiaoJiTile: '1-tiao',

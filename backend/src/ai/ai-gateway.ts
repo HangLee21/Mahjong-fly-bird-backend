@@ -26,6 +26,7 @@ export class HttpAiGateway implements AiGateway {
           body: JSON.stringify({
             player_id: input.playerIndex,
             deterministic: true,
+            legal_actions: input.legalActions,
             state: buildPredictState(input.state, input.playerIndex)
           }),
           signal: controller.signal

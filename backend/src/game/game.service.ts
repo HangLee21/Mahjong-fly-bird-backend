@@ -42,15 +42,15 @@ export class GameService {
       const rules = normalizeRoomRules(room.configJson, room.ruleVersion);
       const maxRounds = Number(rules.roundCount) || 1;
       const completedRounds = await prisma.game.count({ where: { roomId: room.id, status: 'FINISHED' } });
-      if (room.status === 'FINISHED' && completedRounds >= maxRounds) {
-        throw new AppError('GAME_ALREADY_STARTED', 'All rounds have finished.');
-      }
-      const currentRound = completedRounds + 1;
+      const cycleRound = completedRounds % maxRounds;
+      const currentRound = cycleRound + 1;
       const previousGame = await prisma.game.findFirst({
         where: { roomId: room.id, status: 'FINISHED' },
         orderBy: { finishedAt: 'desc' }
       });
-      const totalScores = this.extractScores(previousGame?.finalScoreJson);
+      const totalScores = cycleRound === 0 && completedRounds > 0
+        ? [0, 0, 0, 0]
+        : this.extractScores(previousGame?.finalScoreJson);
       const gameSeed = randomUUID();
       const dealer = previousGame ? this.nextDealer(previousGame.resultJson, gameSeed) : this.dealerFromSeed(gameSeed);
 

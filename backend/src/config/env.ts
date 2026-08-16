@@ -31,6 +31,7 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_SECRET: z.string().default('dev_secret'),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  AUTH_TOKEN_VERSION: z.string().trim().min(1).default('1'),
   WECHAT_APP_ID: z.string().default('replace_me'),
   WECHAT_APP_SECRET: z.string().default('replace_me'),
   WECHAT_MOCK_LOGIN: boolFromEnv.default(true),

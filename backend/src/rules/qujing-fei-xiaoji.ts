@@ -302,21 +302,21 @@ function meldTripletTile(meld: Meld) {
   return meld.tiles.find((tile) => tile !== XIAO_JI) ?? meld.tiles[0];
 }
 
-function tripletLikeTiles(player: PlayerState) {
-  const counts = countTiles(player.hand);
+function tripletLikeTiles(player: PlayerState, concealedTiles = player.hand) {
+  const counts = countTiles(concealedTiles);
   const handTriplets = counts.flatMap((count, tile) => (count >= 3 ? [tile] : []));
   const meldTriplets = player.melds.map(meldTripletTile).filter((tile): tile is number => tile !== undefined);
   return [...handTriplets, ...meldTriplets];
 }
 
-function pairTiles(player: PlayerState) {
-  const counts = countTiles(player.hand);
+function pairTiles(player: PlayerState, concealedTiles = player.hand) {
+  const counts = countTiles(concealedTiles);
   return counts.flatMap((count, tile) => (count >= 2 ? [tile] : []));
 }
 
-function isDaDui(player: PlayerState) {
+function isDaDui(player: PlayerState, concealedTiles = player.hand) {
   if (player.melds.some((meld) => meld.type === 'CHOW')) return false;
-  const counts = countTiles(player.hand);
+  const counts = countTiles(concealedTiles);
   const wildcards = counts[XIAO_JI];
   counts[XIAO_JI] = 0;
   const setsNeeded = 4 - player.melds.length;
@@ -341,17 +341,17 @@ function canMakeTripletSets(counts: number[], wildcards: number, setsNeeded: num
   return canMakeTripletSets(next, wildcards - need, setsNeeded - 1);
 }
 
-function dragonFan(player: PlayerState) {
-  const triplets = new Set(tripletLikeTiles(player).filter(isDragon));
-  const pairs = new Set(pairTiles(player).filter(isDragon));
+function dragonFan(player: PlayerState, concealedTiles = player.hand) {
+  const triplets = new Set(tripletLikeTiles(player, concealedTiles).filter(isDragon));
+  const pairs = new Set(pairTiles(player, concealedTiles).filter(isDragon));
   if ([31, 32, 33].every((tile) => triplets.has(tile))) return { code: 'BIG_THREE_DRAGONS', name: '大三元', fan: 2 };
   if (triplets.size >= 2 && [31, 32, 33].some((tile) => pairs.has(tile) && !triplets.has(tile))) return { code: 'SMALL_THREE_DRAGONS', name: '小三元', fan: 1 };
   return null;
 }
 
-function windFan(player: PlayerState) {
-  const triplets = new Set(tripletLikeTiles(player).filter(isWind));
-  const pairs = new Set(pairTiles(player).filter(isWind));
+function windFan(player: PlayerState, concealedTiles = player.hand) {
+  const triplets = new Set(tripletLikeTiles(player, concealedTiles).filter(isWind));
+  const pairs = new Set(pairTiles(player, concealedTiles).filter(isWind));
   if ([27, 28, 29, 30].every((tile) => triplets.has(tile))) return { code: 'BIG_FOUR_WINDS', name: '大四喜', fan: 3 };
   if (triplets.size >= 3 && [27, 28, 29, 30].some((tile) => pairs.has(tile) && !triplets.has(tile))) return { code: 'SMALL_FOUR_WINDS', name: '小四喜', fan: 2 };
   return null;
@@ -434,10 +434,10 @@ function analyzeWin(state: GameState, playerIndex: number, tile: number | undefi
     else if (kongCount >= 2) addFan(fanItems, 'DOUBLE_KONG', '双杠', 1);
     if (isQingYiSe(allTiles, chickAsWild)) addFan(fanItems, 'QING_YI_SE', allTiles.every(isHonor) ? '字一色' : '清一色', 2);
     else if (isHunYiSe(allTiles, chickAsWild)) addFan(fanItems, 'HUN_YI_SE', '混一色', 1);
-    if (standard.ok && isDaDui(player)) addFan(fanItems, 'DA_DUI', '大对', 1);
-    const dragon = dragonFan(player);
+    if (standard.ok && isDaDui(player, tiles)) addFan(fanItems, 'DA_DUI', '大对', 1);
+    const dragon = dragonFan(player, tiles);
     if (dragon) addFan(fanItems, dragon.code, dragon.name, dragon.fan);
-    const wind = windFan(player);
+    const wind = windFan(player, tiles);
     if (wind) addFan(fanItems, wind.code, wind.name, wind.fan);
     const exposedMelds = player.melds.filter((meld) => meld.type !== 'KONG_CONCEALED').length;
     if (exposedMelds >= 4 && source === 'DISCARD') addFan(fanItems, 'QUAN_QIU_REN', '全求人', 1);
@@ -696,7 +696,10 @@ function scoreResult(state: GameState, winners: number[], loser?: number, selfDr
       return {
         winner: item.winner,
         tile: winTile,
-        hand: [...winnerState.hand, ...(winTile !== undefined && !winnerState.hand.includes(winTile) ? [winTile] : [])]
+        hand: [
+          ...winnerState.hand,
+          ...(winTile !== undefined && !selfDraw ? [winTile] : []),
+        ]
           .sort((a, b) => a - b),
         melds: winnerState.melds.map((meld) => ({ type: meld.type, tiles: [...meld.tiles] })),
         title: item.title,

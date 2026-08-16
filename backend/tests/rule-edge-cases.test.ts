@@ -85,6 +85,36 @@ describe('大对 (all triplets) with a wild', () => {
     expect(result).not.toBeNull();
     expect(result!.fanItems.some((f) => f.code === 'DA_DUI')).toBe(true);
   });
+
+  it('scores mixed all-triplets when the discard completes a triplet', () => {
+    // Production regression, room 963258 at 18:33: the claimed 1-dot must be
+    // included for all-triplets analysis and in winnerDetails.hand.
+    const s = state('discard_mixed_da_dui');
+    s.status = 'WAITING_RESPONSE';
+    s.players[0].hand = [9, 9, 16, 16, 17, 17, 18];
+    s.players[0].melds = [
+      { type: 'PONG', tiles: [29, 29, 29], stepIndex: 1, claimedIndex: 1, fromPlayer: 1 },
+      { type: 'PONG', tiles: [33, 33, 33], stepIndex: 2, claimedIndex: 1, fromPlayer: 2 },
+    ];
+    s.lastDiscard = { tile: 9, fromPlayer: 3, stepIndex: 3 };
+    s.pendingResponses = [
+      { playerIndex: 0, availableActions: [{ type: 'WIN', tile: 9, actionId: 101 }], priority: 4 },
+    ];
+
+    const next = engine().applyAction(s, 0, { type: 'WIN', actionId: 101 }).nextState;
+    const result = next.result as {
+      scoreDelta: number[];
+      fanItems: Array<{ code: string; fan: number }>;
+      winnerDetails: Array<{ fan: number; points: number; hand: number[] }>;
+    };
+    const codes = result.fanItems.map((item) => item.code);
+
+    expect(codes).toContain('HUN_YI_SE');
+    expect(codes).toContain('DA_DUI');
+    expect(result.winnerDetails[0]).toMatchObject({ fan: 2, points: 4 });
+    expect(result.winnerDetails[0].hand.filter((tile) => tile === 9)).toHaveLength(3);
+    expect(result.scoreDelta).toEqual([4, 0, 0, -4]);
+  });
 });
 
 describe('special shapes with the chick', () => {

@@ -96,4 +96,16 @@ describe('room lifecycle', () => {
 
     await expect(service.updateRules('123456', 'user-2', { roundCount: 8 })).rejects.toThrow(/owner/);
   });
+
+  it('rejects adding AI from a non-owner', async () => {
+    const addAi = vi.fn();
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => targetRoom),
+      addAi
+    } as unknown as RoomRepository;
+    const service = new RoomService(rooms, createStateStore(vi.fn()), createLockManager([]));
+
+    await expect(service.addAi('123456', 'user-2', {})).rejects.toThrow(/owner/);
+    expect(addAi).not.toHaveBeenCalled();
+  });
 });

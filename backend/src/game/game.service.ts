@@ -34,6 +34,7 @@ export class GameService {
       const room = await this.rooms.findById(target.id);
       if (!room) throw new AppError('ROOM_NOT_FOUND', 'Room not found.', 404);
       if (!room.seats.some((seat) => seat.userId === userId)) throw new AppError('ROOM_NOT_JOINED', 'User is not in room.', 403);
+      if (room.ownerId !== userId) throw new AppError('FORBIDDEN', 'Only the room owner can start the game.', 403);
       if (room.status === 'PLAYING') return this.getGameView(room.id, userId);
       if (room.status !== 'WAITING' && room.status !== 'FINISHED') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
       if (room.seats.length !== 4 || room.seats.some((seat) => seat.status === 'EMPTY')) {

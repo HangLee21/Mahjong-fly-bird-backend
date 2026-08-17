@@ -51,6 +51,25 @@ describe('game robustness', () => {
     mockedGet.mockResolvedValue(null);
   });
 
+  it('rejects starting a game from a non-owner', async () => {
+    const room = {
+      id: 'internal-room',
+      roomCode: '123456',
+      ownerId: 'owner',
+      status: 'WAITING',
+      ruleVersion: 'qujing-fei-xiaoji-v1.5',
+      configJson: {},
+      seats: [{ seatIndex: 0, userId: 'member', isAI: false, status: 'READY' }]
+    };
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => room),
+      findById: vi.fn(async () => room)
+    };
+    const service = new GameService(rooms as never);
+
+    await expect(service.startGame('123456', 'member')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
   it('auto-passes a disconnected player pending response and keeps the game moving', async () => {
     const state = freshState();
     state.status = 'WAITING_RESPONSE';

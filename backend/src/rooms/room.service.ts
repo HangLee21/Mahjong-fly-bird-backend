@@ -66,6 +66,7 @@ export class RoomService {
         });
         return { deleted: true, roomId: result.roomId, internalRoomId: result.internalRoomId } as const;
       }
+      getBroadcaster().broadcastRoom(target.id, 'ROOM_VIEW', presentRoom(result.room));
       return result.room;
     });
   }
@@ -74,7 +75,9 @@ export class RoomService {
     const target = await this.getRoom(roomId);
     return this.locks.withRoomLock(target.id, async () => {
       const room = await this.getRoom(target.id);
-      void userId;
+      if (room.ownerId !== userId) {
+        throw new AppError('FORBIDDEN', 'Only the room owner can add AI.', 403);
+      }
       if (room.status !== 'WAITING') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
       if (!room.seats.some((seat) => seat.status === 'EMPTY')) return room;
       const updated = await this.rooms.addAi(room.id, input.aiLevel, input.aiModel, input.seatIndex);

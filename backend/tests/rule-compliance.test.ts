@@ -459,6 +459,32 @@ describe('番种细节', () => {
   });
 });
 
+describe('杠上炮判定', () => {
+  it('只在上杠补牌后的第一次出牌计为杠上炮', () => {
+    const eng = engine();
+    const s = state();
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+    s.players[0].hand = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.lastDraw = { playerIndex: 0, tile: 5, source: 'PUBLIC_KONG', stepIndex: 1 };
+
+    const after = eng.applyAction(s, 0, { type: 'DISCARD', tile: 1, actionId: 1 }).nextState;
+    expect(after.afterKongDiscardFrom).toBe(0);
+  });
+
+  it('普通摸牌后的出牌不计为杠上炮', () => {
+    const eng = engine();
+    const s = state();
+    s.currentPlayer = 0;
+    s.status = 'PLAYING';
+    s.players[0].hand = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    s.lastDraw = { playerIndex: 0, tile: 5, source: 'WALL', stepIndex: 1 };
+
+    const after = eng.applyAction(s, 0, { type: 'DISCARD', tile: 1, actionId: 1 }).nextState;
+    expect(after.afterKongDiscardFrom).toBeUndefined();
+  });
+});
+
 describe('流局阈值', () => {
   it('ends as a draw when a kong settlement reaches the wall threshold', () => {
     const s = state();

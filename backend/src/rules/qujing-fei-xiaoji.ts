@@ -982,7 +982,10 @@ export class QujingFeiXiaoJiRuleEngine implements RuleEngine {
         nextState.xiaoJiActiveAsWild = false;
       }
       nextState.lastDiscard = { tile: action.tile, fromPlayer: playerIndex, stepIndex: nextState.stepIndex };
-      nextState.afterKongDiscardFrom = nextState.lastKong?.playerIndex === playerIndex ? playerIndex : undefined;
+      nextState.afterKongDiscardFrom =
+        nextState.lastDraw?.playerIndex === playerIndex && nextState.lastDraw.source === 'PUBLIC_KONG'
+          ? playerIndex
+          : undefined;
       events.push({ type: 'TILE_DISCARDED', playerIndex, tile: action.tile });
       const run = nextState.specialRuns?.[playerIndex];
       if (run && !run.brokenByMeld && (run.honorDiscards >= 10 || run.yaojiuDiscards >= 13)) {

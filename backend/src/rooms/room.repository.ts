@@ -182,6 +182,25 @@ export class RoomRepository {
     return this.findById(roomId);
   }
 
+  async kickPlayer(roomId: string, seatIndex: number) {
+    const room = await this.findById(roomId);
+    const seat = room?.seats.find((item) => item.seatIndex === seatIndex && item.userId && !item.isAI);
+    if (!seat) return null;
+    await prisma.roomSeat.update({
+      where: { id: seat.id },
+      data: { userId: null, isAI: false, aiLevel: null, aiModel: null, status: 'EMPTY' }
+    });
+    return this.findById(roomId);
+  }
+
+  async transferOwner(roomId: string, newOwnerId: string) {
+    const room = await this.findById(roomId);
+    const seat = room?.seats.find((item) => item.userId === newOwnerId && !item.isAI);
+    if (!seat) return null;
+    await prisma.room.update({ where: { id: roomId }, data: { ownerId: newOwnerId } });
+    return this.findById(roomId);
+  }
+
   setStatus(roomId: string, status: string) {
     return prisma.room.update({ where: { id: roomId }, data: { status } });
   }

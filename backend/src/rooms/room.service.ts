@@ -116,6 +116,48 @@ export class RoomService {
     });
   }
 
+  async kickPlayer(roomId: string, userId: string, seatIndex: number) {
+    const target = await this.getRoom(roomId);
+    return this.locks.withRoomLock(target.id, async () => {
+      const room = await this.getRoom(target.id);
+      if (room.ownerId !== userId) {
+        throw new AppError('FORBIDDEN', 'Only the room owner can kick players.', 403);
+      }
+      if (room.status !== 'WAITING') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
+      const seat = room.seats.find((item) => item.seatIndex === seatIndex);
+      if (!seat?.userId || seat.isAI) {
+        throw new AppError('ROOM_NOT_JOINED', 'Target seat is not a human player.', 400);
+      }
+      if (seat.userId === userId) {
+        throw new AppError('FORBIDDEN', 'Room owner cannot kick themselves.', 400);
+      }
+      const updated = await this.rooms.kickPlayer(room.id, seatIndex);
+      if (!updated) throw new AppError('ROOM_NOT_JOINED', 'Target seat is not a human player.', 400);
+      getBroadcaster().broadcastRoom(updated.id, 'ROOM_VIEW', presentRoom(updated));
+      return updated;
+    });
+  }
+
+  async transferOwner(roomId: string, userId: string, seatIndex: number) {
+    const target = await this.getRoom(roomId);
+    return this.locks.withRoomLock(target.id, async () => {
+      const room = await this.getRoom(target.id);
+      if (room.ownerId !== userId) {
+        throw new AppError('FORBIDDEN', 'Only the room owner can transfer ownership.', 403);
+      }
+      if (room.status !== 'WAITING') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
+      const seat = room.seats.find((item) => item.seatIndex === seatIndex);
+      if (!seat?.userId || seat.isAI) {
+        throw new AppError('ROOM_NOT_JOINED', 'Target seat is not a human player.', 400);
+      }
+      if (seat.userId === userId) throw new AppError('FORBIDDEN', 'Room owner cannot transfer to themselves.', 400);
+      const updated = await this.rooms.transferOwner(room.id, seat.userId);
+      if (!updated) throw new AppError('ROOM_NOT_JOINED', 'Target seat is not a human player.', 400);
+      getBroadcaster().broadcastRoom(updated.id, 'ROOM_VIEW', presentRoom(updated));
+      return updated;
+    });
+  }
+
   async updateRules(roomId: string, userId: string, rules: Record<string, unknown>) {
     const target = await this.getRoom(roomId);
     return this.locks.withRoomLock(target.id, async () => {

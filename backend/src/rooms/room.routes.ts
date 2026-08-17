@@ -29,6 +29,10 @@ const ReadyBody = z.object({
   ready: z.boolean()
 });
 
+const SeatIndexBody = z.object({
+  seatIndex: z.coerce.number().int().min(0).max(3)
+});
+
 const CreateRoomBody = z
   .object({
     roomId: z.string().regex(/^\d{6}$/).optional(),
@@ -93,6 +97,20 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
     const body = RemoveAiBody.parse(request.body ?? {});
     return presentRoom(await rooms.removeAi(roomId, auth.userId, body?.seatIndex));
+  });
+
+  app.post('/api/rooms/:roomId/kick', async (request) => {
+    const auth = await requireAuth(request);
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    const body = SeatIndexBody.parse(request.body ?? {});
+    return presentRoom(await rooms.kickPlayer(roomId, auth.userId, body.seatIndex));
+  });
+
+  app.post('/api/rooms/:roomId/transfer-owner', async (request) => {
+    const auth = await requireAuth(request);
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    const body = SeatIndexBody.parse(request.body ?? {});
+    return presentRoom(await rooms.transferOwner(roomId, auth.userId, body.seatIndex));
   });
 
   app.post('/api/rooms/:roomId/rules', async (request) => {

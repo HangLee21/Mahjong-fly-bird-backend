@@ -35,6 +35,10 @@ export class RoomService {
     return this.rooms.findByIdOrCode(roomId);
   }
 
+  async activeGameId(roomId: string) {
+    return this.rooms.findActiveGameId(roomId);
+  }
+
   async joinRoom(roomId: string, userId: string, seatIndex?: number) {
     const target = await this.getRoom(roomId);
     return this.locks.withRoomLock(target.id, async () => {

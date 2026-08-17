@@ -52,7 +52,9 @@ export async function registerRoomRoutes(app: FastifyInstance) {
 
   app.get('/api/rooms/:roomId', async (request) => {
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
-    return presentRoom(await rooms.getRoom(roomId));
+    const room = await rooms.getRoom(roomId);
+    const gameId = await rooms.activeGameId(room.id);
+    return { ...presentRoom(room), gameId };
   });
 
   app.get('/api/rooms/:roomId/preview', async (request) => {

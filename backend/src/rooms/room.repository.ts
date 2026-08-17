@@ -50,6 +50,15 @@ export class RoomRepository {
     });
   }
 
+  async findActiveGameId(roomId: string) {
+    const game = await prisma.game.findFirst({
+      where: { roomId, status: 'PLAYING' },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true }
+    });
+    return game?.id ?? null;
+  }
+
   async join(roomId: string, userId: string, seatIndex?: number) {
     const room = await this.findById(roomId);
     const seat = room?.seats.find((item) => item.status === 'EMPTY' && (seatIndex === undefined || item.seatIndex === seatIndex));

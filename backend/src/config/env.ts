@@ -36,6 +36,7 @@ const EnvSchema = z.object({
   WECHAT_APP_SECRET: z.string().default('replace_me'),
   WECHAT_MOCK_LOGIN: boolFromEnv.default(true),
   WECHAT_API_TIMEOUT_MS: z.coerce.number().int().min(500).default(5000),
+  AVATAR_BASE_URL: z.string().default('https://assets.flybirdmahjong.fun/game-assets/avatars'),
   AI_SERVICE_URL: z.string().default('http://localhost:8001'),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().default(3000),
   AI_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().min(1).default(3),

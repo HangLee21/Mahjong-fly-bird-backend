@@ -89,6 +89,8 @@ services:
         NO_PROXY: ${BUILD_NO_PROXY:-localhost,127.0.0.1,postgres,redis,ai,backend,caddy}
     restart: unless-stopped
     init: true
+    volumes:
+      - ./game-assets:/app/game-assets
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0

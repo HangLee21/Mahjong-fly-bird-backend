@@ -1,0 +1,102 @@
+name: mahjong-fly-bird-smoke
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-bookworm}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mahjong}
+      POSTGRES_USER: ${POSTGRES_USER:-mahjong}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smoke_postgres_password}
+    volumes:
+      - smoke_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - smoke
+    logging: *default-logging
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-bookworm}
+    command:
+      - sh
+      - -c
+      - exec redis-server --bind 0.0.0.0 --protected-mode yes --requirepass "$$REDIS_PASSWORD" --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-smoke_redis_password}
+    volumes:
+      - smoke_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - smoke
+    logging: *default-logging
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mahjong}:${POSTGRES_PASSWORD:-smoke_postgres_password}@postgres:5432/${POSTGRES_DB:-mahjong}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-smoke_redis_password}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-smoke_jwt_secret}
+      AUTH_TOKEN_VERSION: ${AUTH_TOKEN_VERSION:-1}
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-wx67f006b9a7827b2a}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-unused}
+      WECHAT_MOCK_LOGIN: "true"
+      WECHAT_API_TIMEOUT_MS: 5000
+      AI_SERVICE_URL: http://127.0.0.1:1
+      AI_REQUEST_TIMEOUT_MS: 800
+      AI_ACTION_DELAY_MS: 300
+      AI_ADVANCE_RETRY_DELAY_MS: 500
+      RESPONSE_TIMEOUT_MS: 30000
+      ROOM_LOCK_TTL_MS: 30000
+      ROOM_DISCONNECT_GRACE_MS: 60000
+      DEFAULT_RULE_VERSION: ${DEFAULT_RULE_VERSION:-qujing-fei-xiaoji-v1.5}
+      DEFAULT_OBSERVATION_VERSION: ${DEFAULT_OBSERVATION_VERSION:-obs_v1}
+      DEFAULT_ACTION_VERSION: ${DEFAULT_ACTION_VERSION:-action_v1}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-smoke_admin_token}
+      APPLY_DB_SCHEMA: "1"
+      SEED_DATABASE: "1"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${SMOKE_PORT:-18080}:3000"
+    networks:
+      - smoke
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+
+networks:
+  smoke:
+
+volumes:
+  smoke_postgres_data:
+  smoke_redis_data:

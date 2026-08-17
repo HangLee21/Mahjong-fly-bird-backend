@@ -483,6 +483,18 @@ describe('杠上炮判定', () => {
     const after = eng.applyAction(s, 0, { type: 'DISCARD', tile: 1, actionId: 1 }).nextState;
     expect(after.afterKongDiscardFrom).toBeUndefined();
   });
+
+  it('点炮时即使不是补牌那张，第一张出牌也计为杠上炮', () => {
+    const eng = engine();
+    const s = state();
+    s.players[0].hand = [1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5];
+    s.afterKongDiscardFrom = 0;
+    s.lastDiscard = { tile: 5, fromPlayer: 0, stepIndex: 1 };
+
+    const win = eng.verifyWin(s, 0, 5, 'DISCARD');
+    expect(win.ok).toBe(true);
+    expect(win.fanItems.some((item) => item.code === 'KONG_DISCARD_WIN')).toBe(true);
+  });
 });
 
 describe('流局阈值', () => {

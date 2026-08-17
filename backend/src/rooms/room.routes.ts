@@ -13,11 +13,21 @@ const AddAiBody = z.object({
   aiModel: z.string().optional()
 });
 
+const RemoveAiBody = z
+  .object({
+    seatIndex: z.coerce.number().int().min(0).max(3).optional()
+  })
+  .optional();
+
 const JoinRoomBody = z
   .object({
     seatIndex: z.number().int().min(0).max(3).optional()
   })
   .optional();
+
+const ReadyBody = z.object({
+  ready: z.boolean()
+});
 
 const CreateRoomBody = z
   .object({
@@ -55,6 +65,13 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     return presentRoom(room);
   });
 
+  app.post('/api/rooms/:roomId/ready', async (request) => {
+    const auth = await requireAuth(request);
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    const body = ReadyBody.parse(request.body ?? {});
+    return presentRoom(await rooms.setReady(roomId, auth.userId, body.ready));
+  });
+
   app.post('/api/rooms/:roomId/leave', async (request) => {
     const auth = await requireAuth(request);
     const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
@@ -69,6 +86,13 @@ export async function registerRoomRoutes(app: FastifyInstance) {
     const room = await rooms.addAi(roomId, auth.userId, { ...body, aiModel: body.aiModel ?? body.model });
     getBroadcaster().broadcastRoom(room.id, 'ROOM_VIEW', presentRoom(room));
     return presentRoom(room);
+  });
+
+  app.post('/api/rooms/:roomId/remove-ai', async (request) => {
+    const auth = await requireAuth(request);
+    const { roomId } = z.object({ roomId: z.string() }).parse(request.params);
+    const body = RemoveAiBody.parse(request.body ?? {});
+    return presentRoom(await rooms.removeAi(roomId, auth.userId, body?.seatIndex));
   });
 
   app.post('/api/rooms/:roomId/rules', async (request) => {

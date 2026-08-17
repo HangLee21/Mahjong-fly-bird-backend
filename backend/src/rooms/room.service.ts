@@ -86,6 +86,36 @@ export class RoomService {
     });
   }
 
+  async setReady(roomId: string, userId: string, ready: boolean) {
+    const target = await this.getRoom(roomId);
+    return this.locks.withRoomLock(target.id, async () => {
+      const room = await this.getRoom(target.id);
+      if (room.status !== 'WAITING') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
+      if (!room.seats.some((seat) => seat.userId === userId && !seat.isAI)) {
+        throw new AppError('ROOM_NOT_JOINED', 'User is not in room.', 403);
+      }
+      const updated = await this.rooms.setReady(room.id, userId, ready);
+      if (!updated) throw new AppError('ROOM_NOT_JOINED', 'User is not in room.', 403);
+      getBroadcaster().broadcastRoom(updated.id, 'ROOM_VIEW', presentRoom(updated));
+      return updated;
+    });
+  }
+
+  async removeAi(roomId: string, userId: string, seatIndex?: number) {
+    const target = await this.getRoom(roomId);
+    return this.locks.withRoomLock(target.id, async () => {
+      const room = await this.getRoom(target.id);
+      if (room.ownerId !== userId) {
+        throw new AppError('FORBIDDEN', 'Only the room owner can remove AI.', 403);
+      }
+      if (room.status !== 'WAITING') throw new AppError('GAME_ALREADY_STARTED', 'Game already started.');
+      const updated = await this.rooms.removeAi(room.id, seatIndex);
+      if (!updated) throw new AppError('ROOM_FULL', 'No AI seat to remove.');
+      getBroadcaster().broadcastRoom(updated.id, 'ROOM_VIEW', presentRoom(updated));
+      return updated;
+    });
+  }
+
   async updateRules(roomId: string, userId: string, rules: Record<string, unknown>) {
     const target = await this.getRoom(roomId);
     return this.locks.withRoomLock(target.id, async () => {

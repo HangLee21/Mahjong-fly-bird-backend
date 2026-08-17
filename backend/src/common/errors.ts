@@ -4,6 +4,7 @@ export type ErrorCode =
   | 'ROOM_NOT_FOUND'
   | 'ROOM_FULL'
   | 'ROOM_NOT_JOINED'
+  | 'PLAYERS_NOT_READY'
   | 'GAME_NOT_FOUND'
   | 'GAME_ALREADY_STARTED'
   | 'GAME_NOT_STARTED'

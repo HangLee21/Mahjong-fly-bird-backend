@@ -40,6 +40,9 @@ export class GameService {
       if (room.seats.length !== 4 || room.seats.some((seat) => seat.status === 'EMPTY')) {
         throw new AppError('ROOM_FULL', 'Room needs 4 occupied seats before starting.');
       }
+      if (room.seats.some((seat) => !seat.isAI && seat.userId && seat.status !== 'READY')) {
+        throw new AppError('PLAYERS_NOT_READY', 'All human players must be ready before starting.');
+      }
       const rules = normalizeRoomRules(room.configJson, room.ruleVersion);
       const maxRounds = Number(rules.roundCount) || 1;
       const completedRounds = await prisma.game.count({ where: { roomId: room.id, status: 'FINISHED' } });

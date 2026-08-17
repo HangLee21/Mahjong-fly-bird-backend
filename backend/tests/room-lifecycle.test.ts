@@ -108,4 +108,44 @@ describe('room lifecycle', () => {
     await expect(service.addAi('123456', 'user-2', {})).rejects.toThrow(/owner/);
     expect(addAi).not.toHaveBeenCalled();
   });
+
+  it('syncs a human player ready state', async () => {
+    const readyRoom = {
+      ...targetRoom,
+      status: 'WAITING',
+      seats: [{ seatIndex: 1, userId: 'user-2', isAI: false, status: 'READY', user: null }]
+    };
+    const setReady = vi.fn(async () => ({
+      ...readyRoom,
+      seats: [{ ...readyRoom.seats[0], status: 'OCCUPIED' }]
+    }));
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => readyRoom),
+      setReady
+    } as unknown as RoomRepository;
+    const service = new RoomService(rooms, createStateStore(vi.fn()), createLockManager([]));
+
+    const result = await service.setReady('123456', 'user-2', false);
+
+    expect(setReady).toHaveBeenCalledWith('internal-room-id', 'user-2', false);
+    expect(result.seats[0].status).toBe('OCCUPIED');
+  });
+
+  it('rejects removing AI from a non-owner', async () => {
+    const aiRoom = {
+      ...targetRoom,
+      ownerId: 'user-1',
+      status: 'WAITING',
+      seats: [{ seatIndex: 2, userId: null, isAI: true, status: 'READY', user: null }]
+    };
+    const removeAi = vi.fn();
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => aiRoom),
+      removeAi
+    } as unknown as RoomRepository;
+    const service = new RoomService(rooms, createStateStore(vi.fn()), createLockManager([]));
+
+    await expect(service.removeAi('123456', 'user-2', 2)).rejects.toThrow(/owner/);
+    expect(removeAi).not.toHaveBeenCalled();
+  });
 });

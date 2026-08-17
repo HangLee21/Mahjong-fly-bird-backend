@@ -61,6 +61,17 @@ export class RoomRepository {
     return this.findById(roomId);
   }
 
+  async setReady(roomId: string, userId: string, ready: boolean) {
+    const room = await this.findById(roomId);
+    const seat = room?.seats.find((item) => item.userId === userId && !item.isAI);
+    if (!seat) return null;
+    await prisma.roomSeat.update({
+      where: { id: seat.id },
+      data: { status: ready ? 'READY' : 'OCCUPIED' }
+    });
+    return this.findById(roomId);
+  }
+
   async updateConfig(roomId: string, configJson: Record<string, unknown>) {
     return prisma.room.update({
       where: { id: roomId },
@@ -154,6 +165,19 @@ export class RoomRepository {
     await prisma.roomSeat.update({
       where: { id: seat.id },
       data: { isAI: true, aiLevel, aiModel, status: 'READY' }
+    });
+    return this.findById(roomId);
+  }
+
+  async removeAi(roomId: string, seatIndex?: number) {
+    const room = await this.findById(roomId);
+    const seat =
+      room?.seats.find((item) => item.isAI && item.seatIndex === seatIndex) ??
+      room?.seats.find((item) => item.isAI);
+    if (!seat) return null;
+    await prisma.roomSeat.update({
+      where: { id: seat.id },
+      data: { userId: null, isAI: false, aiLevel: null, aiModel: null, status: 'EMPTY' }
     });
     return this.findById(roomId);
   }

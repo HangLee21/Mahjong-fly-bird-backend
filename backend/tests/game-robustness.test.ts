@@ -70,6 +70,30 @@ describe('game robustness', () => {
     await expect(service.startGame('123456', 'member')).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
+  it('rejects starting a game while a human player is not ready', async () => {
+    const room = {
+      id: 'internal-room',
+      roomCode: '123456',
+      ownerId: 'owner',
+      status: 'WAITING',
+      ruleVersion: 'qujing-fei-xiaoji-v1.5',
+      configJson: {},
+      seats: [
+        { seatIndex: 0, userId: 'owner', isAI: false, status: 'READY' },
+        { seatIndex: 1, userId: 'player-2', isAI: false, status: 'OCCUPIED' },
+        { seatIndex: 2, userId: null, isAI: true, status: 'READY' },
+        { seatIndex: 3, userId: null, isAI: true, status: 'READY' }
+      ]
+    };
+    const rooms = {
+      findByIdOrCode: vi.fn(async () => room),
+      findById: vi.fn(async () => room)
+    };
+    const service = new GameService(rooms as never);
+
+    await expect(service.startGame('123456', 'owner')).rejects.toMatchObject({ code: 'PLAYERS_NOT_READY' });
+  });
+
   it('auto-passes a disconnected player pending response and keeps the game moving', async () => {
     const state = freshState();
     state.status = 'WAITING_RESPONSE';

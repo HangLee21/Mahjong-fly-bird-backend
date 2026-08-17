@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx scripts/seed.ts",
-    "export-rule-fixtures": "tsx scripts/export-rule-fixtures.ts"
+    "export-rule-fixtures": "tsx scripts/export-rule-fixtures.ts",
+    "smoke:multiplayer": "node scripts/multiplayer-smoke.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
